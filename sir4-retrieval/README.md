@@ -21,13 +21,13 @@ Start with **`RUNBOOK.md`** (one SIR-4 field end to end) and `MIR_RUNBOOK.md`.
 | `eval/compare_arms.py`, `eval/all_domains_table.py`, `eval/report_domain_results.py`, `eval/zeroshot_baselines_table.py`, `eval/table91_row.py` | Table builders from per-query scores. |
 | `eval/walk_prior*.py`, `eval/graph_channel_*.py`, `eval/ccmp_*.py`, `eval/gate_decomp_fig.py` | Graph-channel diagnostics: parameter-free walk prior, graph-alone curves, CCMP paired statistics and mechanism analyses (see `eval/ccmp_mechanism_README.md`). |
 | `eval/scientific_path_interpretations.py`, `eval/table4.py`, `eval/showcase.py`, `eval/route_*.py`, `eval/pick_qualitative.py`, `eval/render_qualitative.py` | Path interpretations (NBFNet gradient beam search with the CCMP gate per hop), Table-4 style tables and the qualitative figures (see `eval/scientific_path_interpretations_README.md`). |
-| `eval/test_*.py` | Unit tests for the analysis tooling (`python3 -m unittest discover -s sir4-retrieval/eval -p 'test_*.py'`). |
+| `eval/test_*.py` | Unit tests for the analysis tooling (`python3 -m unittest discover -s sir4-retrieval/eval -p 'test_*.py'`). 25 tests; two need the merged graphs and Drive scan outputs in place, and `test_top_one_hop_is_not_hidden_and_invalid_paths_are_rejected` fails on the current path-attribution code (known, 14 Sep 2026). |
 | `transfer/` | ResearchBench zero-shot protocol: pooled corpus, subsets, paired bootstrap. |
 | `llm_baselines/` | MOOSE-Chem, MOOSE-Star and LATTICE runners on SIR-4 (import the original repositories). |
 | `downstream/` | **Contribution 4.** Hypothesis composition and judging pipeline. |
 | `notebooks/` | The Colab notebooks behind the thesis tables (see `notebooks/README.md`). |
 | `results/` | Final tables (`main_table/`, `zeroshot_baselines/`, `mir/`, `sir4_llm_baselines/`, `llm_baselines_tomato/`) and qualitative outputs. |
-| `colab_*_cell.py`, `colab_cells/`, `ccmp_live_patch.py`, `llm_expansion_sir4_cell.py` | Paste-in Colab cells used during the runs. Not importable modules. |
+| `colab_*_cell.py`, `colab_cells/` | Paste-in Colab cells. The ones at this level are inputs to the notebook generators in `prep/`; `colab_cells/` holds the stand-alone ones. Not importable modules. |
 
 `PLAN.md` records the CS port plan and the six silent-failure bugs the smoke test caught; the
 lesson (caches keyed by corpus, never by split alone) is what `cargo_paths.py` enforces.
