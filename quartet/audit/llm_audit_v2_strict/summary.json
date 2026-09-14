@@ -1,0 +1,16 @@
+{
+  "n": 50,
+  "target_valid": 50,
+  "primary_valid": 45,
+  "proposed_nonunique": 36,
+  "confirmed_nonunique": 32,
+  "unweighted_confirmed_rate": 0.64,
+  "poststratified_confirmed_rate": 0.5214866777532972,
+  "strict_primary_failures": [
+    2,
+    4,
+    19,
+    20,
+    45
+  ]
+}

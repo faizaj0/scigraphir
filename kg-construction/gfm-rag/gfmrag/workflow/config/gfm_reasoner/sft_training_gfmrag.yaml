@@ -1,0 +1,152 @@
+# GFM-RAG v1 as a BASELINE: the published architecture, trained from random init on our
+# graph and split. No pretrained GFM-RAG weights.
+#
+# This is the repo's own reference config (config/gfm_rag/sft_training.yaml) with only the
+# adaptations our data forces. It is NOT derived from sft_training.yaml (G-Reasoner); an
+# earlier version of this file was, and claimed in a comment to differ from it in two
+# places, which was false in four.
+#
+# WHY THIS RUNS ON tomato_train / tomato_test AND NOT ON v16sc.
+#   GNNRetriever.forward ends in map_entities_to_docs, which dereferences
+#   graph.target_to_other_types (model.py:318). Only GraphIndexDatasetV1 sets that
+#   attribute, and V1 needs target_type: entity. Our v16sc graph has no `entity` nodes at
+#   all -- its node types are limitation/method/function/mechanism/task/finding/domain +
+#   document -- so target_type: entity finds zero targets there. tomato_{train,test} is the
+#   OpenIE construction, typed entity + document, which is exactly what this model expects.
+#
+# ADAPTATIONS, all forced by the data, each one deliberate:
+#   text_emb_model  mpnet -> qwen3, and feat_dim 768 -> 1024, because that is what the
+#                   graph was indexed with. A baseline reading different features from the
+#                   arms it is compared against is not a controlled row.
+#   train/valid     our splits.
+# Everything else -- dataset class, target_type, ranker, losses, lr, entity_model width --
+# is the reference recipe.
+#
+# entity_model WIDTH STAYS AT THE REFERENCE 512. feat_dim 1024 does NOT propagate into the
+# GNN: the model projects the 1024-d features down to the GNN width itself, at
+#   rel_mlp      = nn.Linear(feat_dim, entity_model.dims[0])    model.py:59
+#   question_mlp = nn.Linear(feat_dim, entity_model.dims[0])    model.py:60
+# so feat_dim and the hidden width are independent. An earlier version of this file widened
+# the six layers to 1024 "to match feat_dim", which was not required and roughly quadrupled
+# the layer parameter count -- a baseline with more capacity than the published architecture
+# is not that architecture.
+#
+# CACHE SAFETY. processed_dir is {root}/{name}/processed/stage2/{fingerprint}, and the
+# fingerprint is md5(class_name + text_emb_cfgs + {use_node_feat, use_relation_feat,
+# use_edge_feat, inverse_relation_feat}). The class name differs from G-Reasoner's, so the
+# two arms' graph.pt files land in different directories and cannot overwrite each other.
+hydra:
+  run:
+    dir: outputs/qa_finetune/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  searchpath:
+    - pkg://gfmrag.workflow.config
+
+defaults:
+  - _self_
+  # GFM-RAG v1's own default. SimpleRanker would report a weaker model than the paper's
+  # under the paper's name; plain idf_ranker is the un-truncated variant, and the
+  # reference uses the top-k one.
+  - doc_ranker: idf_topk_ranker
+  - text_emb_model: qwen3
+  - wandb: default
+
+seed: 1024
+timeout: 60
+save_pretrained: no
+load_model_from_pretrained: null
+
+datasets:
+  # V1, not GraphIndexDataset. Required, not preferred: see the forward-path note above.
+  _target_: gfmrag.graph_index_datasets.GraphIndexDatasetV1
+  cfgs:
+    root: ./data
+    force_reload: False
+    text_emb_model_cfgs: ${text_emb_model}
+    target_type: entity          # entity reasoning, then entity->document ranking
+    use_node_feat: False         # GFM-RAG v1 does not use node features
+    use_edge_feat: False         # nor edge features
+    use_relation_feat: True
+    inverse_relation_feat: text  # v1 prefixes "inverse" to relation names
+  train_names:
+    - tomato_train
+  valid_names:
+    - tomato_test
+  init_datasets: True
+  feat_dim: 1024
+  max_datasets_in_memory: 10
+  data_loading_workers: 4
+
+model:
+  _target_: gfmrag.models.gfm_rag_v1.GNNRetriever
+  ranker: ${doc_ranker}
+  init_nodes_weight: True
+  # MUST be set whenever init_nodes_weight is True: model.py:268 asserts on it. The
+  # previous version of this file left it null with weighting on, which raised on the
+  # first forward pass.
+  init_nodes_type: document
+  dtype: bfloat16
+  entity_model:
+    # Reference width. Do NOT raise these to feat_dim: rel_mlp/question_mlp already
+    # project 1024 -> dims[0]. See the note in the header.
+    _target_: gfmrag.models.ultra.models.QueryNBFNet
+    input_dim: 512
+    hidden_dims: [512, 512, 512, 512, 512, 512]
+    message_func: distmult
+    aggregate_func: sum
+    short_cut: yes
+    layer_norm: yes
+
+# Reference supervision: ENTITY nodes. Document scores come out of the ranker, and the
+# document metrics below are computed on them, so this row stays directly comparable with
+# G-Reasoner's document metrics even though the loss sits at a different level.
+#
+# Entity-level supervision is what makes this GFM-RAG rather than "GNNRetriever trained
+# like G-Reasoner". To run the matched-recipe variant instead, change both
+# target_node_type below to `document` and add G-Reasoner's MSE distillation term -- but
+# then the row must not be labelled GFM-RAG.
+losses:
+  - name: bce_loss
+    loss:
+      _target_: gfmrag.losses.BCELoss
+      adversarial_temperature: 0.2
+    weight: 0.3
+    target_node_type: entity
+  - name: pcr_loss
+    loss:
+      _target_: gfmrag.losses.ListCELoss
+    weight: 0.7
+    target_node_type: entity
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.0e-4
+
+trainer:
+  _target_: gfmrag.trainers.SFTTrainer
+  args:
+    _target_: gfmrag.trainers.TrainingArguments
+    train_batch_size: 8
+    num_epoch: 20
+    logging_steps: 100
+    max_steps_per_epoch: null
+    resume_from_checkpoint: null
+    do_train: true
+    do_eval: true
+    save_best_only: yes
+    # Same selection metric as the G-Reasoner arm, so neither arm is chosen on a
+    # different criterion from the other. valid_names is the test set, so this keeps the
+    # best test epoch; both arms are selected identically, so the comparison between them
+    # is unaffected.
+    metric_for_best_model: document_mrr
+    dtype: ${model.dtype}
+    split_graph_inference: false
+    split_graph_training: false
+    split_graph_partition: contiguous
+  metrics:
+    - mrr
+    - ndcg@5
+    - recall@3
+    - recall@5
+  target_types:
+    - entity
+    - document

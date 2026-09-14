@@ -1,0 +1,134 @@
+% Cross-domain example: computer graphics (primitive-based neural rendering) -> radiative-transfer physics.
+% Query 10.48550_arxiv.2603.02887 (SIR-4 CS test, cross-field stratum); gold 10.1364/josaa.18.001929.
+% Numbers from colab_qualitative_cs.ipynb (8 Sep 2026; hops_frame_on / hops_frame_off / hops_openie):
+%   rank of the gold: Qwen3 cosine 8 -> multi-view scorer 7 -> +OpenIE graph 3 -> +SciAffordGraph 2 -> +CCMP 2;
+%   graph channel alone 1; OpenIE graph channel 3,169 (no route within six hops); path weight 16.08 with CCMP, 19.12 without.
+% Preamble needs: xcolor, tcolorbox[most], booktabs, float, tikz (positioning, arrows.meta, calc); \resulttablestyle.
+\providecolor{hlblue}{RGB}{214,228,247}
+\providecolor{hlgreen}{RGB}{214,240,224}
+\providecolor{hlorange}{RGB}{252,232,200}
+\providecolor{hlpurple}{RGB}{228,220,246}
+\providecolor{hlgrey}{RGB}{236,236,238}
+\providecommand{\hl}[2]{\colorbox{#1}{\strut #2}}
+\providecommand{\gw}[1]{{\color{black!55}(#1)}}
+\providecommand{\ty}[1]{{\scriptsize\scshape\bfseries\color{black!75}#1}}
+\providecommand{\qbox}[2]{%
+  \begin{tcolorbox}[enhanced, colback=gray!4, colframe=black!70, boxrule=0.6pt, arc=2.5pt,
+                    left=6pt, right=6pt, top=4pt, bottom=4pt, before skip=4pt, after skip=4pt]
+  \textbf{#1}\quad #2
+  \end{tcolorbox}}
+\providecommand{\ladder}[5]{%
+  {\footnotesize rank of this paper:\; Qwen3 cosine \textbf{#1} $\rightarrow$ multi-view scorer \textbf{#2}
+  $\rightarrow$ {+}\,OpenIE graph \textbf{#3} $\rightarrow$ {+}\,SciAffordGraph \textbf{#4} $\rightarrow$ {+}\,CCMP \textbf{#5}}}
+
+% =================================================================================================
+\begin{figure}[H]
+\centering
+\small
+\qbox{Research problem (Computer Science: computer graphics)}{``Is it possible to replace the
+\hl{hlblue}{exponential transmittance function} used in primitive-based neural rendering with alternative
+decay models that \hl{hlgreen}{decay faster}, thereby reducing the number of primitives composited per pixel
+and accelerating rendering, without compromising image fidelity? [\ldots] Previous optimisation attempts
+\hl{hlorange}{assume the exponential model}. Meanwhile, in volumetric rendering of correlated media,
+\hl{hlpurple}{non-exponential transmittance functions} have been introduced to account for spatial
+correlation, but have not been integrated into discrete primitive compositing.''}
+
+\qbox{Hypothetical answer $h_0$}{``A \hl{hlpurple}{generalized transmittance model employing a polynomial
+decay function}, where the opacity is adjusted according to a user-defined curve, allowing for
+\hl{hlgreen}{faster decay rates} while preserving colour fidelity through a modified alpha compositing
+algorithm.''\quad {\footnotesize (best of eight views; cosine to the gold 0.49, raw query 0.44. Views
+4 to 7 are explicit cross-domain analogies: non-linear drag in fluid dynamics, non-exponential decay
+envelopes in audio, hyperbolic predation decay in ecology.)}}
+
+\qbox{Retrieved inspiration (Physics: radiative transfer in random media, 2001)}{\emph{On the extinction of radiation by a homogeneous
+but spatially correlated random medium} (J.\ Opt.\ Soc.\ Am.\ A). Exponential extinction, the
+Beer--Lambert law, follows from Poisson statistics of extinction events in a
+\hl{hlorange}{homogeneous medium}; when the medium is \hl{hlpurple}{spatially correlated}, attenuation with
+depth is \hl{hlblue}{no longer exponential}.\\[2pt]
+\ladder{8}{7}{3}{2}{2}{\footnotesize; graph channel alone \textbf{1}.}}
+
+\caption{Cross-domain example, SIR-4 CS, Computer Science to Physics. A rendering question is answered by radiative-transfer physics. The
+query never names Beer--Lambert, Poisson statistics, or random media. The hypothetical answers move the
+paper from 8 to 7, the entity graph to 3, and the SciAffordGraph reasoner ranks it first on its own
+(fused 2). The route (Figure~\ref{fig:graph-cs-render}, Table~\ref{tab:paths-cs-render}) is the physics
+argument itself: the exponential law is a consequence of assuming a homogeneous medium, and the paper's
+stochastic treatment of extinction is the method that removes that assumption.}
+\label{fig:qual-cs-render}
+\end{figure}
+
+% =================================================================================================
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, every node/.style={align=left},
+  fr/.style={draw=black!70, line width=0.5pt, rounded corners=2.5pt, inner sep=5pt, text width=50mm},
+  lim/.style={fr, fill=hlorange}, met/.style={fr, fill=hlpurple}, ent/.style={fr, fill=hlgrey, text width=26mm, inner sep=3pt},
+  qry/.style={fr, fill=white, dashed, text width=150mm, align=center},
+  gold/.style={fr, fill=hlblue, line width=1.1pt, text width=70mm, align=center},
+  e/.style={-{Latex[length=2.2mm]}, line width=0.7pt, color=black!80},
+  seed/.style={-{Latex[length=2mm]}, line width=0.6pt, color=black!45, dashed},
+  rel/.style={font=\footnotesize\itshape, inner sep=2pt},
+  note/.style={font=\scriptsize, color=black!60, text width=34mm},
+  panel/.style={font=\small\bfseries, color=black!80},
+]
+% ---- query
+\node[qry] (q) at (0,0) {\ty{query: Computer Science (computer graphics)}\\ ``Replace the exponential transmittance of primitive-based neural rendering with a faster-decaying model, without losing fidelity''};
+% ---- left panel: SciAffordGraph
+\node[panel] at (-4.2,-1.8) {A. SciAffordGraph route (graph channel rank 1)};
+\node[lim] (l1) at (-5.4,-3.1) {\ty{limitation}\\ assumes homogeneous medium};
+\node[met] (m1) at (-5.4,-5.7) {\ty{method}\\ stochastic approach to exponential extinction (Poisson statistics of extinction events)};
+\node[gold] (g) at (-4.6,-8.7) {\ty{gold paper: Physics (radiative transfer, atmospheric optics)}\\ \emph{On the extinction of radiation by a homogeneous but spatially correlated random medium}};
+\draw[seed] (q.south) -- ++(0,-0.35) -| node[pos=0.3, above=3pt, font=\scriptsize, color=black!55] {seed frame of the query} (l1.north);
+\draw[e] (l1) -- node[rel, right] {overcomes$^{-1}$} (m1);
+\draw[e] (m1) -- node[rel, right] {contributes$^{-1}$} (g);
+\node[note, anchor=north west] at ($(l1.north east)+(0.25,0)$) {the query's ``assumes the exponential model'' seeds this frame: the exponential law is what a homogeneous medium implies};
+\node[note, anchor=north west] at ($(m1.north east)+(0.25,0)$) {path weight 16.08 with CCMP \gw{19.12 without}; both hops gate 1.00};
+% ---- right panel: OpenIE
+\node[panel] at (5.4,-1.8) {B. OpenIE entity graph (graph channel rank 3{,}169)};
+\node[ent] (e1) at (4.0,-3.1) {neural rendering};
+\node[ent] (e2) at (6.9,-3.1) {exponential function};
+\node[ent] (e3) at (4.0,-4.3) {alpha blending};
+\node[ent] (e4) at (6.9,-4.3) {volume rendering};
+\node[ent] (e5) at (4.0,-5.5) {correlated noise};
+\node[ent] (e6) at (6.9,-5.5) {reflectance};
+\draw[seed] (q.south) -- ++(0,-0.35) -| ($(e1.north)!0.5!(e2.north)$);
+\node[gold, text width=60mm, fill=white, draw=black!50, dashed, line width=0.6pt] (g2) at (5.4,-8.7) {\ty{gold paper}\\ \emph{On the extinction of radiation \ldots}\\[1pt] {\footnotesize no route from any seed entity within six hops}};
+\draw[-{Latex[length=2mm]}, line width=0.7pt, color=black!50, dotted] ($(e5.south)!0.5!(e6.south)+(0,-0.1)$) -- node[right, font=\scriptsize, color=black!55, pos=0.5] {\;is\_mentioned\_in chains only;\\ \;none reach the paper} (g2.north);
+\end{tikzpicture}
+\caption{Graph view of the rendering example. \textbf{A.} On the SciAffordGraph the query's
+\textsc{limitation} seed ``assumes homogeneous medium'' is overcome by the \textsc{method} the gold
+contributes, two typed hops. \textbf{B.} On the OpenIE entity graph built from the same corpus the query's
+seed entities are surface terms (``neural rendering'', ``alpha blending'', ``exponential function'') and no
+co-mention chain reaches the paper within the reasoner's depth. Dashed arrows are the seeding step; solid
+arrows are graph edges; $r^{-1}$ is the inverse relation.}
+\label{fig:graph-cs-render}
+\end{figure}
+
+% =================================================================================================
+\begin{table}[H]
+\centering
+\resulttablestyle
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{0.11\linewidth} p{0.87\linewidth}@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Paths}\quad faster-than-exponential transmittance $\rightarrow$ \emph{On the extinction of radiation by a homogeneous but spatially correlated random medium}} \\
+\midrule
+SciAfford\-Graph &
+16.08 \gw{19.12}:\; (\textsc{limitation}: assumes homogeneous medium,\; \textit{overcomes}$^{-1}$,\;
+\textsc{method}: stochastic approach to exponential extinction) $\rightarrow$
+(\textsc{method}: stochastic approach to exponential extinction,\; \textit{contributes}$^{-1}$,\; \textbf{gold paper}) \newline
+{\footnotesize shortest seed-to-gold distance 2 hops; graph channel rank 1 with and without CCMP; fused rank 2 and 2.} \\
+OpenIE &
+no route to the gold within six hops (graph channel rank 3{,}169); seeds: neural rendering, exponential function,
+alpha blending, volume rendering, correlated noise, reflectance; OpenIE model rank 3 (carried by its scorer channel, rank 3). \\
+\bottomrule
+\end{tabular}
+\caption{Path interpretations for Figure~\ref{fig:qual-cs-render}. Top-weighted route from the query's seed
+frames to the gold under the trained reasoner (beam search over the gradient of the graph score with respect
+to each layer's edge weights, as in NBFNet and GFM-RAG); $r^{-1}$ is the inverse relation; grey weight is
+the same weights with the CCMP gate off. The frame graph states the physical reason in two typed hops. The
+entity graph has the paper but no route to it: its edges record which terms a paper mentions, not what
+assumption a method removes.}
+\label{tab:paths-cs-render}
+\end{table}

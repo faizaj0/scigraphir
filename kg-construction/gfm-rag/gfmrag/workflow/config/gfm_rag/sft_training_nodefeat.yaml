@@ -1,0 +1,88 @@
+hydra:
+  run:
+    dir: outputs/qa_finetune/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  searchpath:
+    - pkg://gfmrag.workflow.config
+
+defaults:
+  - _self_
+  - doc_ranker: idf_topk_ranker
+  - text_emb_model: mpnet
+  - wandb: default
+
+# Misc
+seed: 1024
+timeout: 60
+save_pretrained: no
+load_model_from_pretrained: null
+
+datasets:
+  _target_: gfmrag.graph_index_datasets.GraphIndexDatasetV1
+  cfgs:
+    root: ./data
+    force_reload: False
+    text_emb_model_cfgs: ${text_emb_model}
+    target_type: entity
+    use_node_feat: True          # <-- CHANGED: embed node text into graph.x (G-reasoner Eq 3/5)
+    use_edge_feat: False
+    use_relation_feat: True
+    inverse_relation_feat: text
+  train_names:
+    - hotpotqa_train_example
+  valid_names:
+    - hotpotqa_test
+  init_datasets: True
+  feat_dim: 768
+  max_datasets_in_memory: 10
+  data_loading_workers: 4
+
+# GFM model configuration
+model:
+  _target_: gfmrag.models.gfm_rag_v1.model_nodefeat.GNNRetrieverNF   # <-- CHANGED: node-feature variant
+  init_nodes_weight: True
+  init_nodes_type: document
+  ranker: ${doc_ranker}
+  entity_model:
+    _target_: gfmrag.models.ultra.models.QueryNBFNet
+    input_dim: 512
+    hidden_dims: [512, 512, 512, 512, 512, 512]
+    message_func: distmult
+    aggregate_func: sum
+    short_cut: yes
+    layer_norm: yes
+
+# Loss configuration (unchanged from baseline)
+losses:
+  - name: bce_loss
+    loss:
+      _target_: gfmrag.losses.BCELoss
+      adversarial_temperature: 0.2
+    weight: 0.3
+    target_node_type: entity
+  - name: pcr_loss
+    loss:
+      _target_: gfmrag.losses.ListCELoss
+    weight: 0.7
+    target_node_type: entity
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.0e-4
+
+# Training configuration
+trainer:
+  _target_: gfmrag.trainers.SFTTrainer
+  args:
+    _target_: gfmrag.trainers.TrainingArguments
+    train_batch_size: 8
+    num_epoch: 20
+    logging_steps: 100
+    max_steps_per_epoch: null
+    resume_from_checkpoint: null
+    do_train: true
+    do_eval: true
+    save_best_only: yes
+    metric_for_best_model: document_mrr
+  metrics: [mrr, hits@1, hits@2, hits@3, hits@5, hits@10, hits@20, hits@50, hits@100]
+  target_types: [entity, document]

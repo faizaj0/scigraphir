@@ -1,0 +1,62 @@
+\begin{table}[h]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+
+\begin{tabular}{@{}l cc cc c@{}}
+\toprule
+& \multicolumn{2}{c}{\textbf{Same-field}}
+& \multicolumn{2}{c}{\textbf{Cross-field}}
+& \textbf{$\Delta_{\mathrm{macro}}$} \\
+\cmidrule(lr){2-3}
+\cmidrule(lr){4-5}
+
+\textbf{Method}
+& CS & MS
+& CS & MS
+& Gap \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{Sparse lexical retrieval}} \\[1pt]
+BM25 \cite{robertson2009bm25}
+& 30.79 & 43.45 & 29.66 & 38.71
+& \dM\dg{$-7.91\%$} \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Dense embedding retrieval}} \\[1pt]
+BGE-large \cite{bge}
+& 36.50 & \gL 50.40 & 32.85 & \gL 42.99
+& \dg{$-12.73\%$} \\
+Qwen3-Embedding \cite{zhang2025qwen3embedding}
+& \gB 38.49 & \gM 52.62 & \gM 35.11 & \gM 44.06
+& \dg{$-13.11\%$} \\
+SPECTER2 \cite{singh2022specter2}
+& 31.66 & 39.60 & 29.33 & 36.18
+& \dL\dg{$-8.07\%$} \\
+SciNCL \cite{ostendorff2022scincl}
+& 31.58 & 36.81 & 28.91 & 33.96
+& \dg{$-8.07\%$} \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Reasoning-trained dense retrieval}} \\[1pt]
+ReasonIR-8B \cite{shao2025reasonir}
+& \gM 37.52 & 48.10 & \gL 33.22 & 42.32
+& \dg{$-11.77\%$} \\
+\addlinespace[2pt]
+\midrule
+\multicolumn{6}{@{}l}{\textit{Zero-shot: trained on SIR-4 Physics $+$ Biology, never on CS or MS}} \\[1pt]
+\textsc{SciGraphIR}
+& \gL 37.07 & \gB \textbf{52.83} & \gB \textbf{36.36} & \gB \textbf{47.38}
+& \dB\dg{\textbf{$-6.85\%$}} \\
+\bottomrule
+\end{tabular}
+
+\caption{Zero-shot transfer to two unseen SIR-4 fields, nDCG@5 (\%). \textsc{SciGraphIR}
+is trained on SIR-4 Physics and Biology and evaluated without adaptation on Computer
+Science (CS; 805 same-field, 247 cross-field queries) and Materials Science (MS; 210 and
+121); both target fields are excluded from training and model selection. Baselines are
+training-free on SIR-4. $\Delta_{\mathrm{macro}}$ is the relative change from the
+two-field same-field macro-average to the corresponding cross-field macro-average, as in
+Table~\ref{tab:sir4-ndcg5}; values closer to zero indicate a smaller gap. Green shades
+mark the three highest scores in each column, blue shades the three smallest gaps.}
+\label{tab:sir4-zeroshot}
+\end{table}

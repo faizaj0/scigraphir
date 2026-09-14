@@ -1,0 +1,89 @@
+% CCMP example (SIR-4 CS -> Psychology, cross-field): query 10.48550_arxiv.2602.20408 -> gold 10.3758/bf03202751
+% "Constraining effects of examples in a creative generation task" (Smith, Ward & Schumacher 1993).
+% Numbers: hops_frame_ccmp.json (gate on) and hops_frame_ccmp_off.json (same weights, gate off), hops_openie.json,
+% drive_scan_sir4_cs (8 Sep 2026). Routes are the reasoner's top-2 seed-origin paths (gradient beam search).
+% Preamble needs: \usepackage{tikz} \usetikzlibrary{positioning,arrows.meta,calc} \usepackage{xcolor} \usepackage{float} \usepackage{booktabs}
+\providecolor{hlblue}{RGB}{214,228,247}
+\providecolor{hlgreen}{RGB}{214,240,224}
+\providecolor{hlorange}{RGB}{252,232,200}
+\providecolor{hlpurple}{RGB}{228,220,246}
+\providecolor{hlgrey}{RGB}{236,236,238}
+\providecolor{hlyellow}{RGB}{250,243,205}
+\providecommand{\ty}[1]{{\scriptsize\scshape\bfseries\color{black!75}#1}}
+\providecommand{\hl}[2]{\colorbox{#1}{\strut #2}}
+\providecommand{\nb}[1]{\raisebox{0.15ex}{\textcircled{\scriptsize #1}}}
+\providecommand{\hln}[3]{\colorbox{#1}{\strut \nb{#2}\,#3}}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, every node/.style={align=left},
+  fr/.style={draw=black!70, line width=0.5pt, rounded corners=2.5pt, inner sep=5pt, text width=40mm},
+  fun/.style={fr, fill=hlgreen}, met/.style={fr, fill=hlpurple}, pap/.style={fr, fill=hlblue},
+  dom/.style={fr, fill=hlgrey}, fin/.style={fr, fill=hlyellow},
+  ent/.style={fr, fill=white, draw=black!45, text=black!70, text width=36mm, dashed, align=center},
+  hdr/.style={font=\footnotesize\scshape, color=black!60, inner sep=1pt},
+  qry/.style={fr, fill=white, dashed, text width=118mm, align=center},
+  gold/.style={fr, fill=hlblue, line width=1.1pt, text width=118mm, align=center},
+  e/.style={-{Latex[length=2.2mm]}, line width=0.7pt, color=black!80},
+  seed/.style={-{Latex[length=2mm]}, line width=0.6pt, color=black!45, dashed},
+  rel/.style={font=\footnotesize\itshape, inner sep=2pt},
+  gate/.style={font=\scriptsize, color=orange!70!black, inner sep=2pt},
+  gateon/.style={font=\scriptsize\bfseries, color=orange!80!black, inner sep=2pt},
+  wlab/.style={font=\scriptsize, color=black!55, inner sep=1pt},
+]
+% ---- query (top)
+\node[qry] (q) at (0,0) {\ty{query (SIR-4 computer science)}\\ ``Why do large language models generate less diverse ideas at the collective level than humans, and through what mechanisms can this diversity gap be understood and closed? Prior approaches \ldots\ asked the model to adopt a creative persona, instructed it to \hln{hlgreen}{1}{generate short ideas and then revise them to be bolder and more distinct}, \ldots\ but they lacked a theoretical framework for why LLM ideas converge \ldots\ existing experiments compared \hln{hlgreen}{2}{human and LLM idea generation} without holding constant the instructions given to both sides or the structure of the generation process.''};
+
+% ---- SciAffordGraph: route 1 (left, 4 hops) and route 2 (centre, 2 hops)
+\node[hdr] at (-3.5,-3.45) {SciAffordGraph};
+\node[fun] (a0) at (-5.9,-5.75) {\ty{function} \nb{1}\\ examine incubation effects on problem-solving improvement};
+\node[met] (a1) at (-5.9,-8.35) {\ty{method}\\ fixation induction methodology};
+\node[pap] (a2) at (-5.9,-10.85) {\ty{paper (cognitive psychology)}\\ \emph{Incubation and the Persistence of Fixation in Problem Solving}};
+\node[dom] (a3) at (-5.9,-13.35) {\ty{domain}\\ cognitive psychology};
+\node[fun] (b0) at (-1.1,-5.75) {\ty{function} \nb{2}\\ creative generation process};
+\node[fin] (b1) at (-1.1,-8.35) {\ty{finding}\\ enhanced focus and relevance in creative outputs};
+\node[wlab, anchor=south east, inner sep=1.5pt] at (a0.north east) {route 1: \textbf{11.08} (15.08 no CCMP)};
+\node[wlab, anchor=south east, inner sep=1.5pt] at (b0.north east) {route 2: \textbf{3.73} (5.59 no CCMP)};
+
+% ---- OpenIE column
+\node[hdr] at (4.6,-3.45) {OpenIE entity graph};
+\node[ent] (o0) at (4.6,-5.75) {\ty{no route}\\ {\footnotesize no seed-to-gold path within the reasoner's depth; graph rank 1196}};
+
+% ---- gold
+\node[gold] (g) at (0,-16.3) {\ty{gold paper (cognitive psychology), 1993}\\ \emph{Constraining effects of examples in a creative generation task}\\[1pt]
+{\footnotesize people shown examples before generating ideas reproduce the examples' features: exposure constrains creative generation}};
+
+% ---- seed edges
+\draw[seed] (q.south) -- ++(0,-0.5) -| node[pos=0.02, right, font=\scriptsize, color=black!55, yshift=5pt] {seed frames of the query} (a0.north -| -7.9,0);
+\draw[seed] (q.south) -- ++(0,-0.5) -| (b0.north -| -2.7,0);
+% ---- route 1 edges
+\draw[e] (a0) -- node[rel, right] {achieves$^{-1}$} node[gate, left] {g\,1.00} (a1);
+\draw[e] (a1) -- node[rel, right] {contributes$^{-1}$} node[gate, left] {g\,1.00} (a2);
+\draw[e] (a2) -- node[rel, right] {in field} node[gate, left] {g\,1.00} (a3);
+\draw[e] (a3.south) -- node[rel, right, pos=0.35] {in field$^{-1}$} node[gateon, left, pos=0.35] {g\,1.15} (g.north -| -4.5,0);
+% ---- route 2 edges
+\draw[e] (b0) -- node[rel, right] {concerns$^{-1}$} node[gate, left] {g\,1.00} (b1);
+\draw[e] (b1.south) -- node[rel, right, pos=0.2] {reports$^{-1}$} node[gate, left, pos=0.2] {g\,1.00} (g.north -| -1.1,0);
+\end{tikzpicture}
+
+\vspace{4pt}
+{\footnotesize
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+ & \multicolumn{2}{c}{rank of the gold} & \multicolumn{2}{c}{weight of the route} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+arm & graph channel & fused & route 1 (\nb{1}, 4 hops) & route 2 (\nb{2}, 2 hops) \\
+\midrule
+Qwen3 cosine & -- & 169 & & \\
+multi-view scorer & -- & 49 & & \\
+OpenIE entity graph & 1196 & 48 & \multicolumn{2}{l}{no route} \\
+SciAffordGraph, no CCMP (gate off) & 4 & 25 & 15.08 & 5.59 \\
+SciAffordGraph + CCMP (gate on) & \textbf{2} & \textbf{18} & 11.08 & 3.73 \\
+\midrule
+BM25, BGE-large, ReasonIR-8B & -- & $>$300 & & \\
+Qwen3-Embedding & -- & 171 & & \\
+\bottomrule
+\end{tabular}}
+\caption{SIR-4 CS $\rightarrow$ psychology: \emph{Constraining effects of examples in a creative generation task}. Highlighted spans are the query text nearest to the two seed frames \nb{1}, \nb{2}. Routes are the reasoner's top-2 seed-to-gold paths on the same trained weights with the CCMP gate on and off; $r^{-1}$ inverse relation; $g$ the gate on the sender, in bold where it departs from 1. Lower rank is better.}
+\label{fig:qual-cs-ccmp-creativity}
+\end{figure}

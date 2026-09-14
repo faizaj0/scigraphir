@@ -1,0 +1,112 @@
+{
+ "field": "sir4_cs",
+ "criterion": "graph channel alone ranks the gold <=5 while raw cosine and scorer channel miss it; gold in a different field; OpenIE model misses it",
+ "picked": [
+  {
+   "qid": "10.48550_arxiv.2603.03985",
+   "gold": "10.1111/j.1749-6632.2010.05443.x",
+   "gold_title": "Memory reconsolidation: an update",
+   "gold_field": "neuroscience",
+   "dense": 380,
+   "scorer": 93,
+   "graph": 2,
+   "fused_off": 37,
+   "fused_on": 28,
+   "openie": 98
+  },
+  {
+   "qid": "10.48550_arxiv.2603.03985",
+   "gold": "10.1063/1.4822124",
+   "gold_title": "Emulating the Ebbinghaus forgetting curve of the human brain with a NiO-based memristor",
+   "gold_field": "device physics",
+   "dense": 1014,
+   "scorer": 288,
+   "graph": 5,
+   "fused_off": 145,
+   "fused_on": 151,
+   "openie": 180
+  },
+  {
+   "qid": "10.48550_arxiv.2602.21585",
+   "gold": "q:4f02a72cb830786c",
+   "gold_title": "Double Thompson Sampling for Dueling Bandits",
+   "gold_field": "online learning theory",
+   "dense": 1037,
+   "scorer": 80,
+   "graph": 1,
+   "fused_off": 32,
+   "fused_on": 36,
+   "openie": 10
+  },
+  {
+   "qid": "10.48550_arxiv.2602.20408",
+   "gold": "10.3758/bf03202751",
+   "gold_title": "Constraining effects of examples in a creative generation task",
+   "gold_field": "cognitive psychology",
+   "dense": 169,
+   "scorer": 49,
+   "graph": 2,
+   "fused_off": 25,
+   "fused_on": 18,
+   "openie": 48
+  },
+  {
+   "qid": "10.48550_arxiv.2602.02193",
+   "gold": "10.4208/eajam.2024-158.280924",
+   "gold_title": "Mathematical Analysis of Singularities in the Diffusion Model Under the Submanifold Assumption",
+   "gold_field": "applied mathematics",
+   "dense": 81,
+   "scorer": 80,
+   "graph": 1,
+   "fused_off": 20,
+   "fused_on": 23,
+   "openie": 114
+  }
+ ],
+ "scan_stats": {
+  "cross_queries": 247,
+  "golds_scanned": 926,
+  "graph_rank_le5": 202,
+  "graph_beats_scorer": 230
+ },
+ "note": "fused rank is far worse than the graph channel rank in every case: the additive gate under-weights the graph; state this in the section",
+ "cumulative": {
+  "criterion": "rank improves at every stage of the cumulative ablation: raw cosine > scorer > +graph (gate off) > +CCMP (gate on), final rank <= 10; 3 of 926 golds strictly; 28 more with final <= 5 where graph or CCMP ties",
+  "picked": [
+   {
+    "qid": "10.48550_arxiv.2602.00032",
+    "gold": "10.1007/s00146-022-01443-w",
+    "gold_title": "Word embeddings are biased. But whose bias are they reflecting?",
+    "dense": 86,
+    "scorer": 11,
+    "fused_off": 6,
+    "fused_on": 4,
+    "graph": 4,
+    "openie": 20
+   },
+   {
+    "qid": "10.48550_arxiv.2601.20761",
+    "gold": "10.1561/3600000002",
+    "gold_title": "Hypothesis Testing with E-values",
+    "dense": 282,
+    "scorer": 16,
+    "fused_off": 10,
+    "fused_on": 9,
+    "graph": 12,
+    "openie": 38
+   },
+   {
+    "qid": "10.1109_lra.2026.3675907",
+    "gold": "10.1109/lra.2022.3223024",
+    "gold_title": "Winding Through: Crowd Navigation via Topological Invariance",
+    "dense": 14,
+    "scorer": 8,
+    "fused_off": 1,
+    "fused_on": 1,
+    "graph": 1,
+    "openie": 6,
+    "note": "CCMP ties"
+   }
+  ]
+ }
+}

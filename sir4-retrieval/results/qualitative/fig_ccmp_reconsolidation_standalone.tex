@@ -1,0 +1,13 @@
+% Compile with: tectonic fig_ccmp_reconsolidation_standalone.tex
+% For a paper, input fig_ccmp_reconsolidation.tex instead (native TikZ + caption).
+\documentclass[border=2mm]{standalone}
+\usepackage{xcolor,tikz,graphicx,float,lmodern,helvet,caption}
+\usetikzlibrary{arrows.meta,calc}
+\captionsetup{font=small,labelfont=bf,skip=6pt}
+\begin{document}
+\begin{minipage}{139.7mm}
+\centering
+\input{fig_ccmp_reconsolidation_artwork.tex}\par
+\captionof{figure}[Cross-field retrieval from computer science to neuroscience]{\protect\input{fig_ccmp_reconsolidation_caption.tex}}
+\end{minipage}
+\end{document}

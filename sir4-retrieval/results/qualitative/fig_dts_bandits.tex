@@ -1,0 +1,115 @@
+% Double Thompson Sampling example (SIR-4 CS, cross-field, query 10.48550_arxiv.2602.21585 -> gold 10.48550/arxiv.2602.21585's
+% inspiration "Double Thompson Sampling for Dueling Bandits"). Numbers from colab_table4_openie.ipynb (9 Sep 2026):
+% ranks per channel from hops_t4_{openie,frame_nocc,frame_ccmp}.json; routes are the reasoner's top-weighted
+% seed-origin paths (gradient beam search), nothing else is drawn.
+% Preamble needs: \usepackage{tikz} \usetikzlibrary{positioning,arrows.meta,calc} \usepackage{xcolor} \usepackage{float} \usepackage{booktabs}
+\providecolor{hlblue}{RGB}{214,228,247}
+\providecolor{hlgreen}{RGB}{214,240,224}
+\providecolor{hlorange}{RGB}{252,232,200}
+\providecolor{hlpurple}{RGB}{228,220,246}
+\providecolor{hlgrey}{RGB}{236,236,238}
+\providecolor{hlyellow}{RGB}{250,243,205}
+\providecommand{\ty}[1]{{\scriptsize\scshape\bfseries\color{black!75}#1}}
+\providecommand{\hl}[2]{\colorbox{#1}{\strut #2}}
+\providecommand{\nb}[1]{\raisebox{0.15ex}{\textcircled{\scriptsize #1}}}
+\providecommand{\hln}[3]{\colorbox{#1}{\strut \nb{#2}\,#3}}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, every node/.style={align=left},
+  fr/.style={draw=black!70, line width=0.5pt, rounded corners=2.5pt, inner sep=5pt, text width=40mm},
+  met/.style={fr, fill=hlpurple}, pap/.style={fr, fill=hlblue}, lim/.style={fr, fill=hlorange},
+  ent/.style={fr, fill=white, draw=black!45, text=black!70, text width=26mm, inner sep=3.5pt},
+  entw/.style={ent, text width=42mm},
+  wlab/.style={font=\scriptsize, color=black!55, inner sep=1pt},
+  hdr/.style={font=\footnotesize\scshape, color=black!60, inner sep=1pt},
+  qry/.style={fr, fill=white, dashed, text width=118mm, align=center},
+  hyp/.style={fr, fill=white, dotted, text width=118mm, align=center},
+  gold/.style={fr, fill=hlblue, line width=1.1pt, text width=118mm, align=center},
+  e/.style={-{Latex[length=2.2mm]}, line width=0.7pt, color=black!80},
+  ew/.style={-{Latex[length=2mm]}, line width=0.5pt, color=black!55},
+  seed/.style={-{Latex[length=2mm]}, line width=0.6pt, color=black!45, dashed},
+  rel/.style={font=\footnotesize\itshape, inner sep=2pt},
+  relw/.style={font=\scriptsize\itshape, color=black!60, inner sep=1.5pt},
+  gate/.style={font=\scriptsize, color=orange!70!black, inner sep=2pt},
+]
+% ---- query (top)
+\node[qry] (q) at (0,0) {\ty{query (SIR-4 computer science)}\\ ``How can we optimise candidates in a large discrete output space for test-time \hln{hlgrey}{3}{LLM} improvement when \hln{hlorange}{2}{informative scalar rewards are unavailable or unreliable}? \ldots\ scalar scores are often \hln{hlorange}{2}{unavailable, too sparse, or poorly calibrated}; recent approaches refine \hln{hlorange}{1}{a single trajectory against a single incumbent, lacking a global model of candidate quality} and making \hln{hlorange}{1}{no principled allocation of a limited comparison budget}.''};
+\node[hyp, below=2.2mm of q] (h) {\ty{hypothetical answer $h_3$ written by the scorer (best view, match 0.67)}\\ ``A multi-armed bandit framework that utilizes Thompson sampling to dynamically allocate resources for evaluating candidate solutions, optimizing the selection of candidates based on observed pairwise preferences.''};
+
+% ---- SciAffordGraph column (two limitation seeds -> one method -> gold)
+\node[hdr] at (-3.6,-6.15) {SciAffordGraph (+\,CCMP)};
+\node[lim] (l1) at (-5.9,-7.40) {\ty{limitation} \nb{1}\\ inefficiency in candidate selection};
+\node[lim] (l2) at (-1.3,-7.40) {\ty{limitation} \nb{2}\\ high regret in preference estimation};
+\node[met] (m)  at (-3.6,-10.40) {\ty{method}\\ double thompson sampling (D-TS)};
+
+% ---- OpenIE column (co-mention chain)
+\node[hdr] at (5.0,-6.15) {OpenIE entity graph};
+\node[ent] (o0) at (5.0,-7.10) {\nb{3}\;llm};
+\node[ent] (o1) at (3.55,-8.95) {large language models};
+\node[ent] (o1b) at (6.45,-8.95) {reasoning capabilities};
+\node[entw] (o2) at (5.0,-10.75) {\emph{Parallel-R1: Towards Parallel Thinking via Reinforcement Learning} \ty{(paper)}};
+\node[ent] (o3) at (5.0,-12.45) {synthetic data};
+\node[ent] (o4) at (5.0,-13.65) {d ts};
+% route weights (top-2 per graph)
+\node[wlab, above=1pt of l1.north] {route 1 \; weight \textbf{11.80}};
+\node[wlab, above=1pt of l2.north] {route 2 \; weight \textbf{10.36}};
+\node[wlab, left=2pt of o1.west, align=right] {route 1\\ weight \textbf{0.01}};
+\node[wlab, right=2pt of o1b.east] {route 2\\ weight \textbf{0.01}};
+
+% ---- gold (bottom)
+\node[gold] (g) at (0,-15.60) {\ty{gold paper (machine learning / decision theory), 2016}\\ \emph{Double Thompson Sampling for Dueling Bandits}\\[1pt]
+{\footnotesize D-TS selects both the first and the second candidates according to Thompson sampling, maintaining a posterior distribution for the preference matrix}};
+
+% ---- seed edges
+\draw[seed] (h.south) -- ++(0,-0.5) -| node[pos=0.02, right, font=\scriptsize, color=black!55, yshift=5pt] {seed frames / entities of the query} (l1.north);
+\draw[seed] (h.south) -- ++(0,-0.5) -| (l2.north);
+\draw[seed] (h.south) -- ++(0,-0.5) -| (o0.north);
+% ---- SciAffordGraph edges
+\draw[e] (l1.south) -- node[rel, left, pos=0.45] {overcomes$^{-1}$} node[gate, right, pos=0.45] {g\,1.00} (m.north -| -4.9,0);
+\draw[e] (l2.south) -- node[rel, right, pos=0.45] {overcomes$^{-1}$} node[gate, left, pos=0.45] {g\,1.00} (m.north -| -2.3,0);
+\draw[e] (m.south) -- node[rel, left, pos=0.4] {contributes$^{-1}$} node[gate, right, pos=0.4] {g\,1.00} (g.north -| -3.6,0);
+% ---- OpenIE edges
+\draw[ew] (o0.south) -- node[relw, left, pos=0.6] {are$^{-1}$} (o1.north);
+\draw[ew] (o0.south) -- node[relw, right, pos=0.6] {has} (o1b.north);
+\draw[ew] (o1.south) -- node[relw, left, pos=0.45] {is mentioned in} (o2.north -| 4.2,0);
+\draw[ew] (o1b.south) -- node[relw, right, pos=0.45] {is mentioned in} (o2.north -| 5.8,0);
+\draw[ew] (o2) -- node[relw, right] {is mentioned in$^{-1}$} (o3);
+\draw[ew] (o3) -- node[relw, right] {is based on$^{-1}$} (o4);
+\draw[ew] (o4.south) -- node[relw, right, pos=0.35] {is mentioned in} (g.north -| 5.0,0);
+\end{tikzpicture}
+
+\vspace{4pt}
+{\footnotesize
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+ & \multicolumn{2}{c}{rank of the gold} & \multicolumn{2}{c}{weight of the route} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+arm & graph channel & fused & \nb{1}$\rightarrow$D-TS$\rightarrow$paper & \nb{2}$\rightarrow$D-TS$\rightarrow$paper \\
+\midrule
+Qwen3 cosine & -- & 1037 & & \\
+multi-view scorer & -- & 10 & & \\
+OpenIE entity graph & 417 & 10 & \multicolumn{2}{l}{0.01 (\nb{3} llm, 5 hops)} \\
+SciAffordGraph, no CCMP (gate off) & 1 & 32 & 12.06 & 10.66 \\
+SciAffordGraph + CCMP (gate on) & \textbf{1} & 36 & 11.80 & 10.36 \\
+\midrule
+BM25, BGE-large, Qwen3-Embedding, ReasonIR-8B & -- & $>$300 & & \\
+\bottomrule
+\end{tabular}}
+
+\vspace{4pt}
+{\footnotesize
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{dueling-bandit concept} & \textbf{test-time LLM optimisation} \\
+\midrule
+arm & candidate answer \\
+duel between two arms & pairwise comparison of two answers (``is $A$ better than $B$?'') \\
+preference matrix & estimated probability that one answer beats another \\
+Thompson sampling of both arms & choose informative pairs while favouring promising candidates \\
+comparison budget, regret & limited evaluator calls, wasted comparisons \\
+\bottomrule
+\end{tabular}}
+\caption{SIR-4 CS $\rightarrow$ decision theory: \emph{Double Thompson Sampling for Dueling Bandits}. Highlighted spans are the query text that seeded the reasoner: limitation frames \nb{1}, \nb{2} on the SciAffordGraph, entity \nb{3} on the OpenIE graph. Routes are the reasoner's top-weighted seed-to-gold paths; $r^{-1}$ inverse relation; $g$ the CCMP gate on the sender. Lower rank is better.}
+\label{fig:qual-cs-dts}
+\end{figure}

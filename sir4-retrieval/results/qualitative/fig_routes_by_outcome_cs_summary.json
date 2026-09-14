@@ -1,0 +1,50 @@
+{
+ "cross/gold in top 5": {
+  "n": 150,
+  "mean_hops": 1.8533333333333333,
+  "direct typed link": 37.333333333333336,
+  "via mechanism frame": 45.333333333333336,
+  "via domain hub": 17.333333333333332,
+  "other": 0.0
+ },
+ "cross/rank 6 to 50": {
+  "n": 107,
+  "mean_hops": 2.97196261682243,
+  "direct typed link": 3.7383177570093458,
+  "via mechanism frame": 25.233644859813083,
+  "via domain hub": 70.09345794392523,
+  "other": 0.9345794392523364
+ },
+ "cross/rank > 50": {
+  "n": 167,
+  "mean_hops": 3.910179640718563,
+  "direct typed link": 0.0,
+  "via mechanism frame": 13.77245508982036,
+  "via domain hub": 85.02994011976048,
+  "other": 1.1976047904191616
+ },
+ "same/gold in top 5": {
+  "n": 85,
+  "mean_hops": 1.9058823529411764,
+  "direct typed link": 38.8235294117647,
+  "via mechanism frame": 36.470588235294116,
+  "via domain hub": 24.705882352941178,
+  "other": 0.0
+ },
+ "same/rank 6 to 50": {
+  "n": 72,
+  "mean_hops": 2.8194444444444446,
+  "direct typed link": 8.333333333333334,
+  "via mechanism frame": 22.22222222222222,
+  "via domain hub": 66.66666666666667,
+  "other": 2.7777777777777777
+ },
+ "same/rank > 50": {
+  "n": 65,
+  "mean_hops": 3.6923076923076925,
+  "direct typed link": 0.0,
+  "via mechanism frame": 9.23076923076923,
+  "via domain hub": 89.23076923076923,
+  "other": 1.5384615384615385
+ }
+}

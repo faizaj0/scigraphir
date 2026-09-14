@@ -1,0 +1,63 @@
+% Sections 9.2.5 and 9.2.6, short version. Labels: fig:qual-cs-1..3, tab:paths-cs-1..3 (fig_examples_cs.tex),
+% fig:graph-cs-2 (fig_graph_cs_creativity.tex), fig:qual-example-ot, tab:path-interpretations
+% (fig_example_biology_ot.tex). sec:ablation, sec:faith, \cite{nbfnet}, \cite{gfmrag} are placeholders.
+
+\subsection{Qualitative Analysis}
+\label{sec:qualitative}
+
+A cross-domain inspiration shares a mechanism with the query, not a vocabulary, so dense retrieval
+misses it. We trace what each component of SciGraphIR adds on such queries by reporting the rank of
+the gold at every stage of the cumulative ablation: Qwen3 cosine, multi-view scorer, OpenIE entity
+graph, SciAffordGraph without CCMP, and the full model. Examples were selected by the ladder itself:
+of the 926 cross-field golds in SIR-4 CS, we kept those whose rank improves at every stage.
+
+\paragraph{Computer science to psychology (Figure~\ref{fig:qual-cs-2}).}
+The query asks why language models generate less diverse ideas than people. The gold is a 1993
+cognitive-psychology experiment: exposure to examples constrains the ideas people generate. The
+query never mentions psychology; cosine ranks the paper 169th and no dense baseline puts it in the
+top 25. The scorer's hypothetical answers bring it to 49, the entity graph cannot reach it (48), the
+frame graph reaches it at 25, CCMP at 18; the graph channel alone ranks it 2nd.
+Figure~\ref{fig:graph-cs-2} shows the route: the query's \textsc{function} frame on incubation leads
+to a psychology paper on fixation, its \textsc{domain} node leads to the gold, and CCMP amplifies
+that crossing (gate 1.15). This is the argument a researcher would make: idea convergence is a
+fixation effect, and fixation is studied in cognitive psychology.
+
+\paragraph{Biology to computer vision (Figure~\ref{fig:qual-example-ot}).}
+A protein--RNA binding-site query is inspired by a vision paper on class-imbalanced recognition.
+The hypothetical answer names the function the query needs, handling class imbalance; the frame graph
+links the query's \textsc{limitation} frame in two hops to the optimal-transport method the vision
+paper contributes. Cosine 113, scorer 13, graph 3.
+
+\paragraph{Which graph.}
+The OpenIE entity graph, built from the same corpus, reaches papers only through co-mention. It has
+no route to the psychology paper and ranks the vision paper 3{,}329th against the frame graph's 3
+(Table~\ref{tab:path-interpretations}). Entity graphs connect papers that share words; the frame
+graph connects a need in the query to the method, finding, or limitation that answers it.
+
+\paragraph{What CCMP does.}
+With the gate switched off on the same weights, the routes are unchanged (14 of 15 top routes
+identical, grey weights in Tables~\ref{tab:paths-cs-1} to \ref{tab:paths-cs-3}). CCMP changes their
+weights: it raises specific method routes over generic task routes (Table~\ref{tab:paths-cs-1}) and
+moves the psychology gold from 4 to 2 in the graph channel. Its effect is one to two ranks per query.
+
+\subsection{Path Interpretations}
+\label{sec:paths}
+
+Following NBFNet~\cite{nbfnet} and GFM-RAG~\cite{gfmrag}, the importance of a path $P$ to the
+graph-channel score $g_q(d)$ of document $d$ is the sum of the partial derivatives of the score with
+respect to the weights of its edges at the layers they were used,
+\begin{equation}
+  P_1, \dots, P_k \;=\; \operatorname*{arg\,top\text{-}k}_{P}\;
+  \sum_{(h, r, t)\in P} \frac{\partial\, g_q(d)}{\partial\, w^{(l)}_{(h,r,t)}},
+  \label{eq:path-interp}
+\end{equation}
+with the top-$k$ paths found by beam search from the query's seed frames to $d$. We additionally
+record the CCMP gate applied to each hop's sender, normalised by the frontier mean, so a value above
+1 marks an amplified hop. Tables~\ref{tab:paths-cs-1} to \ref{tab:paths-cs-3} and
+\ref{tab:path-interpretations} list the top routes for the examples above.
+
+The routes are short and typed: one to four hops from a \textsc{function}, \textsc{limitation}, or
+\textsc{method} frame of the query to the frame the gold contributes, achieves, or overcomes.
+Cross-domain routes cross at a bridge paper or a domain node, not at shared words. And the routes
+are the same with and without CCMP; the gate sets their weight. Section~\ref{sec:faith} tests these
+three properties over all cross-field queries.

@@ -1,0 +1,72 @@
+% Why a route's weight changes with the CCMP gate when the gate on every drawn hop is 1.00.
+% Numbers: SIR-4 Biology OT example (query 10.1021_acsomega.5c12723 -> gold 10.1007/s11263-023-01831-9),
+% drive_scan_sir4_biology/hops_frame_ccmp{,_off}.json (8 Sep 2026): frontier-mean responsibility per layer
+% [0.488, 0.422, 0.424, 0.480, 0.255, 0.169]; the method node's responsibility / gate wherever a recorded route
+% used it as sender: layer 1 (0.423 / 1.0015), layer 2 (0.423 / 0.9988), layer 3 (0.619 / 1.144).
+% Layers 4-5 are not on any recorded route: the shown gates assume the node's responsibility stays in 0.42-0.62.
+% Preamble needs: \usepackage{tikz} \usetikzlibrary{positioning,arrows.meta,calc,patterns} \usepackage{xcolor} \usepackage{float} \usepackage{booktabs}
+\providecolor{hlblue}{RGB}{214,228,247}
+\providecolor{hlorange}{RGB}{252,232,200}
+\providecolor{hlpurple}{RGB}{228,220,246}
+\providecolor{hlgreen}{RGB}{214,240,224}
+\providecolor{hlgrey}{RGB}{236,236,238}
+\providecolor{gateor}{RGB}{204,102,0}
+\providecommand{\ty}[1]{{\scriptsize\scshape\bfseries\color{black!75}#1}}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, every node/.style={align=center},
+  fr/.style={draw=black!70, line width=0.5pt, rounded corners=2.5pt, inner sep=4pt, text width=34mm},
+  lim/.style={fr, fill=hlorange}, met/.style={fr, fill=hlpurple}, gold/.style={fr, fill=hlblue, line width=1.1pt, text width=52mm},
+  e/.style={-{Latex[length=2.2mm]}, line width=0.8pt, color=black!80},
+  rel/.style={font=\footnotesize\itshape, inner sep=2pt},
+  lay/.style={font=\scriptsize, color=black!55, inner sep=1pt},
+  gate/.style={font=\scriptsize, color=gateor, inner sep=1.5pt},
+  hdr/.style={font=\footnotesize\bfseries, inner sep=1pt, align=left},
+]
+% =============================== A. the route and what its weight measures ===============================
+\node[hdr, anchor=west] at (-9.0,1.9) {A. The drawn route: both hops attributed at layers 0 and 1, gate 1.00 on both hops};
+\node[lim] (l1) at (-7.0,0) {\ty{limitation}\\ sensitivity to class imbalance};
+\node[met] (m)  at (-1.4,0) {\ty{method}\\ optimal transport-based method};
+\node[gold] (g) at (5.3,0) {\ty{gold paper (computer vision)}\\ \emph{An Optimal Transport View of Class-Imbalanced Visual Recognition}};
+\draw[e] (l1) -- node[rel, above] {overcomes$^{-1}$} node[lay, below] {hop 1 $\cdot$ layer 0} node[gate, below=8pt] {$g = 0.9999$} (m);
+\draw[e] (m) -- node[rel, above] {contributes$^{-1}$} node[lay, below] {hop 2 $\cdot$ layer 1} node[gate, below=8pt] {$g = 1.0015$} (g);
+\node[align=left, font=\footnotesize, anchor=north west, text width=176mm] at (-9.0,-1.35)
+ {$w = \tfrac12\big[\,\partial s/\partial w_{e_1}^{(0)} + \partial s/\partial w_{e_2}^{(1)}\big]$:\; route weight $9.28$ (gate off) $\rightarrow$ $12.44$ (gate on); graph rank $436 \rightarrow 3$.
+  The gate on a drawn hop enters $\partial s/\partial w_e$ only as the factor $g \approx 1$. The gradient itself runs from the score $s$ at layer 6 back through layers 5, 4, 3, 2, where the same senders keep sending and the gate is not 1.};
+
+% =============================== B. the same sender at every layer ===============================
+\node[hdr, anchor=west] at (-9.0,-3.4) {B. The same sender at every layer: the frontier mean falls with depth, so an early-reached node's gate rises};
+\begin{scope}[shift={(-7.9,-8.6)}]
+  \foreach \l/\fm in {0/0.488, 1/0.422, 2/0.424, 3/0.480, 4/0.255, 5/0.169} {
+    \pgfmathsetmacro{\x}{\l*2.9}
+    \pgfmathsetmacro{\hfm}{\fm*4.0}
+    \draw[fill=hlgrey, draw=black!60] (\x-0.85,0) rectangle ++(0.75,\hfm);
+    \node[font=\scriptsize, above] at (\x-0.475,\hfm) {\fm};
+    \node[font=\footnotesize, below=2pt] at (\x,0) {layer \l};
+  }
+  \foreach \l/\gt in {0/1.00, 1/1.00, 2/1.00, 3/1.14} {
+    \pgfmathsetmacro{\x}{\l*2.9}
+    \pgfmathsetmacro{\hg}{(\gt-0.5)*1.6}
+    \draw[fill=gateor!45, draw=gateor] (\x+0.1,0) rectangle ++(0.75,\hg);
+    \node[font=\scriptsize, color=gateor, above] at (\x+0.475,\hg) {$g = \gt$};
+  }
+  \foreach \l/\gt in {4/1.52, 5/2.03} {
+    \pgfmathsetmacro{\x}{\l*2.9}
+    \pgfmathsetmacro{\hg}{(\gt-0.5)*1.6}
+    \draw[pattern=north east lines, pattern color=gateor, draw=gateor, dashed] (\x+0.1,0) rectangle ++(0.75,\hg);
+    \node[font=\scriptsize, color=gateor, above] at (\x+0.475,\hg) {$g \approx \gt$};
+  }
+  \draw[black!60] (-1.2,0) -- (15.6,0);
+  \draw[dotted, gateor] (-1.2,0.8) -- (15.6,0.8) node[right, font=\scriptsize, color=gateor] {$g=1$};
+  \node[font=\scriptsize, anchor=south west, align=left] at (-1.2,3.0)
+    {\colorbox{hlgrey}{\strut frontier-mean responsibility $\bar y^{(l)}$}\quad
+     \colorbox{gateor!45}{\strut method node's gate $g = \tfrac12 + \tfrac12\, y/\bar y^{(l)}$ (measured)}\quad
+     \tikz[baseline=-0.5ex]\draw[pattern=north east lines, pattern color=gateor, draw=gateor, dashed] (0,-1.2mm) rectangle (4mm,1.3mm);\; predicted, $y$ in 0.42--0.62};
+\end{scope}
+\node[align=left, font=\footnotesize, anchor=north west, text width=176mm] at (-9.0,-9.6)
+ {The route's hops are attributed where the sender's responsibility equals the frontier mean, so their gates read 1.00. By layers 4 and 5 the frontier holds many low-responsibility nodes ($\bar y$ = 0.26, 0.17): the same method node is amplified 1.5 to 2$\times$, every early-reached node with it, and late-reached nodes are damped below 1. The gradient that defines $w$ passes through those layers, which is where the weight of an ungated-looking route changes.};
+\end{tikzpicture}
+\caption{Why a route's weight moves with the CCMP gate although the gate on every drawn hop is 1.00 (SIR-4 Biology, protein-RNA query $\rightarrow$ optimal-transport paper). (A) The path weight is the mean of the score gradient with respect to the route's edges at the layers the hops are attributed to; the drawn gates are factors of 1. (B) The gate is responsibility over the frontier mean; the mean falls with depth, so the route's senders are amplified at the layers the gradient passes through. Measured gates from the recorded routes, predicted ones hatched. The six-mask decomposition that isolates this (gate only at layers 0--1, only at 2--5, only on the route's senders, only on the others) is produced by \texttt{colab\_ccmp\_gate\_decomp.ipynb}.}
+\label{fig:ccmp-gate-mechanism}
+\end{figure}

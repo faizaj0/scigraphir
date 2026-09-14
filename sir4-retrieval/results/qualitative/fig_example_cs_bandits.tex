@@ -1,0 +1,140 @@
+% Cross-domain example: LLM test-time optimisation -> online learning theory (dueling bandits).
+% Query 10.48550_arxiv.2602.21585 (SIR-4 CS test, cross-field); gold q:4f02a72cb830786c
+% ("Double Thompson Sampling for Dueling Bandits"). Numbers from colab_qualitative_cs.ipynb (8 Sep 2026):
+%   rank of the gold: Qwen3 cosine 1,037 -> multi-view scorer 80 -> +OpenIE graph 10 -> +SciAffordGraph 32 -> +CCMP 36;
+%   graph channel alone 1 (with and without CCMP); path weight 11.80 with CCMP, 12.06 without;
+%   OpenIE graph channel 417, its top route is a five-hop co-mention chain of weight 0.01.
+% Preamble needs: xcolor, tcolorbox[most], booktabs, float, tikz (positioning, arrows.meta, calc); \resulttablestyle.
+% The colour/macro definitions are shared with fig_example_cs_rendering.tex (\providecommand, safe to \input both).
+\providecolor{hlblue}{RGB}{214,228,247}
+\providecolor{hlgreen}{RGB}{214,240,224}
+\providecolor{hlorange}{RGB}{252,232,200}
+\providecolor{hlpurple}{RGB}{228,220,246}
+\providecolor{hlgrey}{RGB}{236,236,238}
+\providecommand{\hl}[2]{\colorbox{#1}{\strut #2}}
+\providecommand{\gw}[1]{{\color{black!55}(#1)}}
+\providecommand{\ty}[1]{{\scriptsize\scshape\bfseries\color{black!75}#1}}
+\providecommand{\qbox}[2]{%
+  \begin{tcolorbox}[enhanced, colback=gray!4, colframe=black!70, boxrule=0.6pt, arc=2.5pt,
+                    left=6pt, right=6pt, top=4pt, bottom=4pt, before skip=4pt, after skip=4pt]
+  \textbf{#1}\quad #2
+  \end{tcolorbox}}
+\providecommand{\ladder}[5]{%
+  {\footnotesize rank of this paper:\; Qwen3 cosine \textbf{#1} $\rightarrow$ multi-view scorer \textbf{#2}
+  $\rightarrow$ {+}\,OpenIE graph \textbf{#3} $\rightarrow$ {+}\,SciAffordGraph \textbf{#4} $\rightarrow$ {+}\,CCMP \textbf{#5}}}
+
+% =================================================================================================
+\begin{figure}[H]
+\centering
+\small
+\qbox{Research problem (Computer Science: language models)}{``How can we \hl{hlblue}{optimize candidates in a large
+discrete output space} for test-time LLM improvement when \hl{hlorange}{informative scalar rewards are
+unavailable or unreliable}? [\ldots] Some recent approaches avoid scalar evaluation entirely but only refine a
+single trajectory against a single incumbent, lacking a global model of candidate quality and making
+\hl{hlorange}{no principled allocation of a limited comparison budget}. No existing method
+\hl{hlgreen}{aggregates many noisy pairwise preferences into a coherent global ranking} to drive search.''}
+
+\qbox{Hypothetical answer $h_1$}{``A \hl{hlpurple}{multi-armed bandit framework that utilizes Thompson
+sampling} to dynamically allocate resources for evaluating candidate solutions, optimizing the selection of
+candidates based on \hl{hlgreen}{observed pairwise preferences}.''\quad {\footnotesize (best of six views;
+cosine to the gold 0.67, raw query 0.39. View 2 names Copeland rank aggregation; views 3 to 5 are
+cross-domain analogies from evolutionary biology, sociophysics and game theory.)}}
+
+\qbox{Retrieved inspiration (Statistics: sequential decision theory)}{\emph{Double Thompson Sampling for Dueling Bandits}. A
+bandit whose only feedback is a \hl{hlgreen}{noisy pairwise comparison} of two arms; D-TS keeps a posterior over
+the preference matrix and draws both arms from it, with $O(K\log T)$ regret for Condorcet and Copeland
+winners.\\[2pt]
+\ladder{1{,}037}{80}{10}{32}{36}{\footnotesize; graph channel alone \textbf{1}.}}
+
+\caption{Cross-domain example, SIR-4 CS, Computer Science to Statistics. A question about improving language-model outputs without a reward signal is
+answered by dueling-bandit theory. Embedding similarity puts the paper at rank 1{,}037: the query talks
+about language models and candidate refinement, the paper about arms and regret. The scorer's bandit view
+lifts it to 80, and the SciAffordGraph reasoner ranks it first on its own channel through the query's
+\textsc{limitation} frame ``inefficiency in candidate selection'' (Figure~\ref{fig:graph-cs-bandits}). The
+fused rank stops at 36: the additive fusion under-weights a graph channel that is confident exactly where
+the scorer is not, which is the fusion limitation discussed in the limitations section.}
+\label{fig:qual-cs-bandits}
+\end{figure}
+
+% =================================================================================================
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small, every node/.style={align=left},
+  fr/.style={draw=black!70, line width=0.5pt, rounded corners=2.5pt, inner sep=5pt, text width=50mm},
+  lim/.style={fr, fill=hlorange}, met/.style={fr, fill=hlpurple},
+  ent/.style={fr, fill=hlgrey, text width=26mm, inner sep=3pt}, pap/.style={fr, fill=hlblue!60, text width=26mm, inner sep=3pt},
+  qry/.style={fr, fill=white, dashed, text width=150mm, align=center},
+  gold/.style={fr, fill=hlblue, line width=1.1pt, text width=60mm, align=center},
+  e/.style={-{Latex[length=2.2mm]}, line width=0.7pt, color=black!80},
+  ew/.style={-{Latex[length=2mm]}, line width=0.6pt, color=black!55},
+  seed/.style={-{Latex[length=2mm]}, line width=0.6pt, color=black!45, dashed},
+  rel/.style={font=\footnotesize\itshape, inner sep=2pt},
+  relw/.style={font=\scriptsize\itshape, color=black!60, inner sep=1.5pt},
+  note/.style={font=\scriptsize, color=black!60, text width=34mm},
+  panel/.style={font=\small\bfseries, color=black!80},
+]
+\node[qry] (q) at (0,0) {\ty{query: Computer Science (language models)}\\ ``Optimise candidates in a large discrete space for test-time LLM improvement when scalar rewards are unavailable; aggregate noisy pairwise preferences into a global ranking''};
+% ---- A: frame graph
+\node[panel] at (-4.2,-1.8) {A. SciAffordGraph route (graph channel rank 1)};
+\node[lim] (l1) at (-5.4,-3.1) {\ty{limitation}\\ inefficiency in candidate selection};
+\node[met] (m1) at (-5.4,-5.7) {\ty{method}\\ double Thompson sampling (D-TS): draw both arms of each comparison from a posterior over the preference matrix};
+\node[gold] (g) at (-4.6,-9.3) {\ty{gold paper: Statistics (sequential decision theory, dueling bandits)}\\ \emph{Double Thompson Sampling for Dueling Bandits}};
+\draw[seed] (q.south) -- ++(0,-0.35) -| node[pos=0.3, above=3pt, font=\scriptsize, color=black!55] {seed frame of the query} (l1.north);
+\draw[e] (l1) -- node[rel, right] {overcomes$^{-1}$} (m1);
+\draw[e] (m1) -- node[rel, right] {contributes$^{-1}$} (g);
+\node[note, anchor=north west] at ($(l1.north east)+(0.25,0)$) {the query's ``no principled allocation of a limited comparison budget'' seeds this frame};
+\node[note, anchor=north west] at ($(m1.north east)+(0.25,0)$) {path weight 11.80 with CCMP \gw{12.06 without}; both hops gate 1.00};
+% ---- B: OpenIE chain
+\node[panel] at (5.4,-1.8) {B. OpenIE entity graph (graph channel rank 417)};
+\node[ent] (o1) at (3.5,-3.1) {llm};
+\node[ent] (o2) at (7.3,-3.1) {large language models};
+\node[pap] (o3) at (7.3,-5.0) {\ty{paper}\\ Parallel-R1: parallel thinking via RL};
+\node[ent] (o4) at (3.5,-5.0) {synthetic data};
+\node[ent] (o5) at (3.5,-6.9) {d ts};
+\draw[seed] (q.south) -- ++(0,-0.35) -| (o1.north);
+\draw[ew] (o1) -- node[relw, above] {are$^{-1}$} (o2);
+\draw[ew] (o2) -- node[relw, right] {is mentioned in} (o3);
+\draw[ew] (o3) -- node[relw, below] {is mentioned in$^{-1}$} (o4);
+\draw[ew] (o4) -- node[relw, right] {is based on$^{-1}$} (o5);
+\node[gold, text width=60mm, fill=white, draw=black!50, dashed, line width=0.6pt] (g2) at (5.4,-9.3) {\ty{gold paper}\\ \emph{Double Thompson Sampling for Dueling Bandits}\\[1pt] {\footnotesize reached in five hops, path weight 0.01}};
+\draw[ew] (o5.south) -- node[relw, right] {is mentioned in} (g2.north -| o5.south);
+\end{tikzpicture}
+\caption{Graph view of the dueling-bandits example. \textbf{A.} The SciAffordGraph reaches the paper in two
+typed hops: the query's \textsc{limitation} on allocating comparisons is what D-TS overcomes, and D-TS is
+what the paper contributes. \textbf{B.} The OpenIE entity graph reaches the same paper only through a
+five-hop chain of co-mentions (``llm'' to ``large language models'' to an unrelated RL paper to ``synthetic
+data'' to the token ``d ts''), with a path weight of 0.01 and a graph-channel rank of 417. Dashed arrows are
+the seeding step; $r^{-1}$ is the inverse relation.}
+\label{fig:graph-cs-bandits}
+\end{figure}
+
+% =================================================================================================
+\begin{table}[H]
+\centering
+\resulttablestyle
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{0.11\linewidth} p{0.87\linewidth}@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Paths}\quad test-time optimisation without scalar rewards $\rightarrow$ \emph{Double Thompson Sampling for Dueling Bandits}} \\
+\midrule
+SciAfford\-Graph &
+11.80 \gw{12.06}:\; (\textsc{limitation}: inefficiency in candidate selection,\; \textit{overcomes}$^{-1}$,\;
+\textsc{method}: double Thompson sampling) $\rightarrow$
+(\textsc{method}: double Thompson sampling,\; \textit{contributes}$^{-1}$,\; \textbf{gold paper}) \newline
+{\footnotesize shortest seed-to-gold distance 2 hops; graph channel rank 1 with and without CCMP; fused rank 36 and 32.} \\
+OpenIE &
+0.01:\; (llm,\; \textit{are}$^{-1}$,\; large language models) $\rightarrow$ (large language models,\; \textit{is mentioned in},\;
+\textsc{paper}: Parallel-R1) $\rightarrow$ (\textsc{paper}: Parallel-R1,\; \textit{is mentioned in}$^{-1}$,\; synthetic data) $\rightarrow$
+(synthetic data,\; \textit{is based on}$^{-1}$,\; d ts) $\rightarrow$ (d ts,\; \textit{is mentioned in},\; \textbf{gold paper}) \newline
+{\footnotesize shortest seed-to-gold distance 4 hops; graph channel rank 417; OpenIE model rank 10 (its scorer channel, rank 10).} \\
+\bottomrule
+\end{tabular}
+\caption{Path interpretations for Figure~\ref{fig:qual-cs-bandits}. Top-weighted route from the query's seed
+frames to the gold under each trained reasoner (beam search over the gradient of the graph score with
+respect to each layer's edge weights, as in NBFNet and GFM-RAG); $r^{-1}$ is the inverse relation; grey
+weight is the same weights with the CCMP gate off. The frame graph states the reason in two typed hops; the
+entity graph's route is a chain of co-mentions with no content.}
+\label{tab:paths-cs-bandits}
+\end{table}

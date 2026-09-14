@@ -1,0 +1,107 @@
+# G-Reasoner SFT — CARGO fusion (v16sc graph + operator, learned jointly in ONE run).
+# = base sft_training.yaml, but: (1) model is FusionGraphReasoner (wraps GraphReasoner, fuses the
+# operator score into the document logits with a learned per-query gate); (2) losses are bce + pcr on
+# the FUSED score (NO mse distillation — the operator is a fused signal, not a teacher); (3) the
+# trainer adds a small graph-alone aux loss (weight AUX_W) so the from-scratch GNN learns alongside.
+# Operator scores come from env OPERATOR_SCORES (train) / OPERATOR_SCORES_TEST (test).
+hydra:
+  run:
+    dir: outputs/qa_finetune/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  searchpath:
+    - pkg://gfmrag.workflow.config
+
+defaults:
+  - _self_
+  - text_emb_model: qwen3
+  - wandb: default
+
+seed: 1024
+timeout: 60
+save_pretrained: no
+load_model_from_pretrained: null
+
+datasets:
+  _target_: gfmrag.graph_index_datasets.GraphIndexDataset
+  cfgs:
+    root: ./data
+    force_reload: False
+    text_emb_model_cfgs: ${text_emb_model}
+  train_names:
+    - tomato_train_v16sc
+  valid_names:
+    - tomato_test_v16sc
+  init_datasets: True
+  feat_dim: 1024
+  max_datasets_in_memory: 10
+  data_loading_workers: 4
+
+# Fusion model: wraps the v16sc GraphReasoner; entity_model is instantiated and passed through.
+# The operator is recomputed live from cached ingredients (OPERATOR_COMPONENTS[_TEST]) so its
+# scalars w=[w0,w1,w2] and beta are LEARNED jointly (warm-started at fitted values, base LR).
+# H3: the semantic scorer is the graph's PRIOR, not a channel to fuse with. There is no
+# gate, no budget and no combination step; `gamma_init` is unused and left only so the
+# two configs stay diffable.
+model:
+  _target_: gfmrag.models.belief_reasoner.SemanticPriorReasoner
+  belief_scale: 1.0        # std of W_b init; too small and the prior is invisible to the messages
+  readout_init: 1.0e-3     # near zero so S ~= b0 at step 0, non-zero so the graph gets gradient at step 1
+  use_prior: true          # false -> no injection, i.e. the stock graph reasoner
+  use_graph: true          # false -> the semantic scorer alone
+  gamma_init: 0.01         # gate near zero: on step 1 the model IS the operator (opt-in graph, protects same-domain)
+  gate_hidden: 8
+  op_lr_scale: 1.0         # operator scalars learn at the full base LR (4 params, warm-started, fast to fit)
+  # Which scorer supplies the semantic channel. "operator" is the handcrafted sum+max
+  # scorer with the leave-one-out anti-hub term; "mlp" is the learned sorted-input MLP
+  # with a predicted popularity discount, warm-started from SEMANTIC_CKPT/SEMANTIC_POPNET.
+  # Everything else about the fusion is identical, so the pair is a controlled comparison.
+  semantic: operator
+  semantic_train: true     # keep the learned scorer training under the fusion's ranking loss
+  use_ent_emb: early-late-fusion
+  dtype: bfloat16
+  entity_model:
+    _target_: gfmrag.models.ultra.models.QueryNBFNet
+    input_dim: 1024
+    hidden_dims: [1024, 1024, 1024, 1024, 1024, 1024]
+    message_func: distmult
+    aggregate_func: sum
+    short_cut: yes
+    layer_norm: yes
+    return_hidden: True
+
+# Loss: gold supervision on the FUSED document score (no distillation term).
+losses:
+  - name: bce_loss
+    loss:
+      _target_: gfmrag.losses.BCELoss
+      adversarial_temperature: 0.2
+    weight: 0.3
+    target_node_type: document
+  - name: pcr_loss
+    loss:
+      _target_: gfmrag.losses.ListCELoss
+    weight: 0.7
+    target_node_type: document
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.0e-4
+
+trainer:
+  _target_: gfmrag.trainers.fusion_trainer.FusionSFTTrainer   # adds graph-alone aux loss (AUX_W)
+  args:
+    _target_: gfmrag.trainers.TrainingArguments
+    train_batch_size: 4
+    num_epoch: 10
+    logging_steps: 100
+    max_steps_per_epoch: null
+    resume_from_checkpoint: null
+    do_train: true
+    do_eval: true
+    save_best_only: yes
+    metric_for_best_model: document_mrr
+    dtype: ${model.dtype}
+    split_graph_inference: false
+    split_graph_training: false
+    split_graph_partition: contiguous
+  metrics: [mrr, hits@1, hits@2, hits@3, hits@5, hits@10, hits@20, recall@2, recall@3, recall@5, recall@10, recall@20]
+  target_types: [document]

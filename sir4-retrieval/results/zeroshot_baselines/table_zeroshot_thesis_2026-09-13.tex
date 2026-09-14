@@ -1,0 +1,123 @@
+% ---------------------------------------------------------------------------
+% Experiments chapter, EQ3: Zero-Shot Generalisation (13 Sep 2026)
+% One merged table: SIR-4 both directions + ResearchBench + MIR.
+% ---------------------------------------------------------------------------
+\subsection{Zero-Shot Generalisation}
+\label{sec:generalisation}
+
+\textbf{EQ3} tests Hypothesis~7.1: one model, trained on some fields, should
+retrieve in fields it never saw. \textsc{SciGraphIR} is trained on two SIR-4
+fields and tested on the other two, in both directions; models trained on
+TOMATO-Star or on all of SIR-4 are tested on ResearchBench and MIR. Nothing
+is tuned or selected on the target (Section~\ref{sec:zero-shot-transfer}),
+and the baselines are training-free. Table~\ref{tab:zeroshot} reports nDCG@5 and the gap from
+same-field to cross-field queries.
+
+Within SIR-4 (Table~\ref{tab:zeroshot}a), the transferred model is best in six of the eight held-out
+columns and has the smallest cross-field gap in both directions, about half
+the dense baselines' gap when trained on Physics and Biology. On
+ResearchBench and MIR (Table~\ref{tab:zeroshot}b), the model trained on all four SIR-4 fields is the best
+system and matches the model trained on MIR itself
+(Table~\ref{tab:main-results}); the TOMATO-Star model transfers less well,
+below BM25 on ResearchBench and below Qwen3-Embedding on MIR. Differences
+under one point (CS same-field, Biology cross-field) are within run-to-run
+variation, and MIR tests a change of corpus rather than of field. The results
+support Hypothesis~7.1: \textsc{SciGraphIR} transfers to unseen fields
+without adaptation, and transfers best when trained on several fields.
+
+\begin{table}[H]
+\centering
+\resulttablestyle
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.3}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}[t]{@{}l cc cc c @{\hspace{0.7em}} cc cc c@{}}
+\toprule
+\multicolumn{11}{@{}l}{\textbf{(a) Between SIR-4 fields}} \\[1pt]
+& \multicolumn{5}{c}{Trained on Physics $+$ Biology}
+& \multicolumn{5}{c}{Trained on CS $+$ MS} \\
+\cmidrule(lr){2-6}\cmidrule(lr){7-11}
+& \multicolumn{2}{c}{Same-field} & \multicolumn{2}{c}{Cross-field} & Gap
+& \multicolumn{2}{c}{Same-field} & \multicolumn{2}{c}{Cross-field} & Gap \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}\cmidrule(lr){11-11}
+\textbf{Method}
+& CS & MS & CS & MS & $\Delta_{\mathrm{macro}}$
+& Phys. & Bio & Phys. & Bio & $\Delta_{\mathrm{macro}}$ \\
+\midrule
+\multicolumn{11}{@{}l}{\textit{Sparse lexical retrieval}} \\
+BM25 \cite{robertson2009bm25}
+& 30.79 & 43.45 & 29.66 & 38.71 & \dM\dg{$-7.91\%$}
+& 49.21 & 49.69 & 37.57 & 39.63 & \dg{$-21.94\%$} \\
+\midrule
+\multicolumn{11}{@{}l}{\textit{Dense embedding retrieval}} \\
+BGE-large \cite{bge}
+& 36.50 & \gL 50.40 & 32.85 & \gL 42.99 & \dg{$-12.73\%$}
+& \gM 57.09 & \gM 61.18 & \gM 45.92 & \gB 49.70 & \dL\dg{$-19.15\%$} \\
+Qwen3-Embedding \cite{zhang2025qwen3embedding}
+& \gB 38.49 & \gM 52.62 & \gM 35.11 & \gM 44.06 & \dg{$-13.11\%$}
+& 52.40 & 56.70 & 43.99 & 45.17 & \dM\dg{$-18.28\%$} \\
+SPECTER2 \cite{singh2022specter2}
+& 31.66 & 39.60 & 29.33 & 36.18 & \dL\dg{$-8.07\%$}
+& 43.23 & 51.04 & 33.73 & 38.19 & \dg{$-23.71\%$} \\
+SciNCL \cite{ostendorff2022scincl}
+& 31.58 & 36.81 & 28.91 & 33.96 & \dL\dg{$-8.07\%$}
+& 43.06 & 51.03 & 34.33 & 38.22 & \dg{$-22.89\%$} \\
+\midrule
+\multicolumn{11}{@{}l}{\textit{Reasoning-trained dense retrieval}} \\
+ReasonIR-8B \cite{shao2025reasonir}
+& \gM 37.52 & 48.10 & \gL 33.22 & 42.32 & \dg{$-11.77\%$}
+& \gL 57.00 & \gL 56.90 & \gL 45.02 & \gL 46.57 & \dg{$-19.59\%$} \\
+\midrule
+\multicolumn{11}{@{}l}{\textit{\textsc{SciGraphIR}}} \\
+\quad zero-shot
+& \gL 37.07 & \gB \textbf{52.83} & \gB \textbf{36.36} & \gB \textbf{47.38} & \dB\dg{\textbf{$-6.85\%$}}
+& \gB \textbf{58.34} & \gB \textbf{61.62} & \gB \textbf{51.06} & \gM 48.12 & \dB\dg{\textbf{$-17.32\%$}} \\
+\quad in-field$^{\ast}$
+& \dg{38.90} & \dg{54.95} & \dg{36.70} & \dg{49.90} & \dg{$-7.73\%$}
+& \dg{59.59} & \dg{64.17} & \dg{53.76} & \dg{51.57} & \dg{$-14.89\%$} \\
+\bottomrule
+\end{tabular}%
+\hspace{1.6em}%
+\begin{tabular}[t]{@{}l cc c @{\hspace{0.7em}} c@{}}
+\toprule
+\multicolumn{5}{@{}l}{\textbf{(b) To external benchmarks}} \\[1pt]
+& \multicolumn{3}{c}{ResearchBench} & MIR \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-5}
+& \multicolumn{2}{c}{nDCG@5} & Gap & nDCG@5 \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-4}\cmidrule(lr){5-5}
+\textbf{Method} & Same & Cross & $\Delta$ & All \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Sparse lexical retrieval}} \\
+BM25 \cite{robertson2009bm25}
+& \gM 34.02 & \gM 27.15 & \dg{$-20.19\%$} & 20.07 \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Dense embedding retrieval}} \\
+BGE-large \cite{bge}
+& \gL 31.94 & 23.90 & \dg{$-25.17\%$} & 23.68 \\
+Qwen3-Embedding \cite{zhang2025qwen3embedding}
+& 29.32 & 24.18 & \dL\dg{$-17.53\%$} & \gL 27.47 \\
+SPECTER2 \cite{singh2022specter2}
+& 26.14 & 20.41 & \dg{$-21.92\%$} & 21.09 \\
+SciNCL \cite{ostendorff2022scincl}
+& 28.26 & 19.96 & \dg{$-29.37\%$} & 18.70 \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{Reasoning-trained dense retrieval}} \\
+ReasonIR-8B \cite{shao2025reasonir}
+& 29.14 & 24.12 & \dM\dg{$-17.23\%$} & \gM 27.67 \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{\textsc{SciGraphIR}, zero-shot}} \\
+\quad TOMATO-Star-trained
+& 30.91 & \gL 24.60 & \dg{$-20.41\%$} & 26.96 \\
+\quad SIR-4-trained
+& \gB \textbf{38.47} & \gB \textbf{32.88} & \dB\dg{\textbf{$-14.53\%$}} & \gB \textbf{31.80} \\
+\bottomrule
+\end{tabular}%
+}
+\caption{\textbf{Zero-shot transfer (nDCG@5, \%).} (a)~Trained on the two
+named SIR-4 fields, evaluated on the other two; grey$^{\ast}$: trained on the
+evaluated field (Table~\ref{tab:main-results}). (b)~Trained on all four
+SIR-4 fields or on TOMATO-Star, evaluated on ResearchBench and MIR. Baselines
+are training-free. Gap: relative drop from same-field to cross-field score.
+Green: top three per column; blue: three smallest gaps.}
+\label{tab:zeroshot}
+\end{table}

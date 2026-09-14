@@ -1,0 +1,72 @@
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.12}
+\begin{subtable}[t]{0.48\textwidth}%
+\centering\footnotesize
+\setlength{\tabcolsep}{3pt}%
+\begin{tabular}{@{}l cc cc c@{}}
+\toprule
+& \multicolumn{2}{c}{Same-field} & \multicolumn{2}{c}{Cross-field} & $\Delta_{\mathrm{macro}}$ \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+\textbf{Method} & CS & MS & CS & MS & Gap \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{Sparse lexical}} \\[1pt]
+BM25 \cite{robertson2009bm25} & 30.79 & 43.45 & 29.66 & 38.71 & \dM\dg{$-7.91\%$} \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Dense embedding}} \\[1pt]
+BGE-large \cite{bge} & 36.50 & \gL 50.40 & 32.85 & \gL 42.99 & \dg{$-12.73\%$} \\
+Qwen3-Emb. \cite{zhang2025qwen3embedding} & \gB 38.49 & \gM 52.62 & \gM 35.11 & \gM 44.06 & \dg{$-13.11\%$} \\
+SPECTER2 \cite{singh2022specter2} & 31.66 & 39.60 & 29.33 & 36.18 & \dL\dg{$-8.07\%$} \\
+SciNCL \cite{ostendorff2022scincl} & 31.58 & 36.81 & 28.91 & 33.96 & \dg{$-8.07\%$} \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Reasoning-trained dense}} \\[1pt]
+ReasonIR-8B \cite{shao2025reasonir} & \gM 37.52 & 48.10 & \gL 33.22 & 42.32 & \dg{$-11.77\%$} \\
+\addlinespace[2pt]
+\midrule
+\multicolumn{6}{@{}l}{\textit{Zero-shot from Physics $+$ Biology}} \\[1pt]
+\textsc{SciGraphIR} & \gL 37.07 & \gB \textbf{52.83} & \gB \textbf{36.36} & \gB \textbf{47.38} & \dB\dg{\textbf{$-6.85\%$}} \\
+\bottomrule
+\end{tabular}
+\subcaption{Trained on Physics $+$ Biology.}\label{tab:sir4-zeroshot-pb}
+\end{subtable}%
+\hfill
+\begin{subtable}[t]{0.48\textwidth}%
+\centering\footnotesize
+\setlength{\tabcolsep}{3pt}%
+\begin{tabular}{@{}l cc cc c@{}}
+\toprule
+& \multicolumn{2}{c}{Same-field} & \multicolumn{2}{c}{Cross-field} & $\Delta_{\mathrm{macro}}$ \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+\textbf{Method} & Phys. & Bio & Phys. & Bio & Gap \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{Sparse lexical}} \\[1pt]
+BM25 \cite{robertson2009bm25} & -- & -- & -- & -- & -- \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Dense embedding}} \\[1pt]
+BGE-large \cite{bge} & -- & -- & -- & -- & -- \\
+Qwen3-Emb. \cite{zhang2025qwen3embedding} & -- & -- & -- & -- & -- \\
+SPECTER2 \cite{singh2022specter2} & -- & -- & -- & -- & -- \\
+SciNCL \cite{ostendorff2022scincl} & -- & -- & -- & -- & -- \\
+\addlinespace[2pt]
+\cmidrule(lr){1-6}
+\multicolumn{6}{@{}l}{\textit{Reasoning-trained dense}} \\[1pt]
+ReasonIR-8B \cite{shao2025reasonir} & -- & -- & -- & -- & -- \\
+\addlinespace[2pt]
+\midrule
+\multicolumn{6}{@{}l}{\textit{Zero-shot from CS $+$ MS}} \\[1pt]
+\textsc{SciGraphIR} & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\subcaption{Trained on CS $+$ MS.}\label{tab:sir4-zeroshot-cm}
+\end{subtable}
+\caption{Zero-shot transfer between SIR-4 fields, nDCG@5 (\%). In each panel
+\textsc{SciGraphIR} is trained on the two named fields and evaluated without adaptation on
+the other two, which are excluded from training and model selection; baselines are
+training-free. $\Delta_{\mathrm{macro}}$ is the relative change from the same-field to the
+cross-field macro-average, as in Table~\ref{tab:sir4-ndcg5}. Green marks the three highest
+scores per column, blue the three smallest gaps. Dashes denote results not yet obtained.}
+\label{tab:sir4-zeroshot}
+\end{table}
