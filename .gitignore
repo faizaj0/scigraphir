@@ -19,6 +19,9 @@ tmp/
 predictions_*.json
 *_bundle.zip
 
+# External checkouts used by the baselines (TOMATO-Star, MOOSE-Star, ...)
+external/
+
 # Secrets
 .env
 .env.*

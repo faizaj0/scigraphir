@@ -1,0 +1,255 @@
+# QUARTET -- benchmark configuration
+#
+# One file, one source of truth. Every build script reads from here so that the
+# thesis text, the code, and the released data cannot drift apart.
+
+name: QUARTET
+description: >
+  A four-discipline benchmark for corpus-scale cross-domain inspiration retrieval.
+  Extraction follows TOMATO-Star (Yang & Bing, 2026); evaluation construction differs,
+  because TOMATO-Star builds a 15-candidate selection task and QUARTET measures
+  retrieval over a pooled corpus.
+
+# --------------------------------------------------------------------------- split
+# Identical structure and identical dates to TOMATO-Star, so that the transfer
+# result is not confounded by a different temporal regime.
+split:
+  train:
+    start: 2020-01-01
+    end:   2025-09-30
+  test:
+    start: 2025-10-01
+    end:   2026-03-31
+  rationale: >
+    The split point (1 October 2025) is TOMATO-Star's, so the transfer result is not
+    confounded by a different temporal regime. The test window is widened from one
+    month to six because a single month does not supply enough Materials Science
+    papers with structured full text: arXiv carries only 127 in October 2025 against
+    a target of 1,000.
+
+  # OpenAlex assigns works with an imprecise publication date to 1 January. Measured:
+  # 1,086 CS works claim 2026-01-01 against a daily average of ~115 for the rest of
+  # that month, roughly ten times a normal day. Those works could be from any point
+  # in the year, which would silently break the temporal contamination guarantee.
+  drop_january_first: true
+
+  # KNOWN COLLISION -- see the thesis, benchmark construction chapter, footnote on contamination.
+  # TOMATO-Star's own test set is also October 2025 NCBI. QUARTET's biology split
+  # therefore overlaps it by construction. This is not model contamination (the
+  # model never trains on TOMATO-Star test), but the two evaluations are not
+  # independent for biology and must not be reported as if they were.
+  collision_with_tomato_star: biology
+
+# --------------------------------------------------------------------------- domains
+# Domain membership is assigned from OpenAlex `primary_topic.field`, ONE field per
+# domain, no unions. Asymmetric mappings (e.g. letting Materials Science claim both
+# "Materials science" and "Engineering" while Chemistry claims only "Chemistry")
+# make cross-domain rates incomparable across domains; ResearchBench's released
+# labels show exactly that distortion.
+domain_assignment:
+  source: openalex
+  field:  primary_topic.field
+  unions_allowed: false
+
+  # PURITY, not a score margin.
+  #
+  # OpenAlex gives each work up to 3 topics, each belonging to a field; `primary_topic`
+  # is simply the highest-scoring one. Most works have 3, but 1 and 2 both occur
+  # (measured over 1,000 Materials Science works: 3 topics 93%, 2 topics 2%, 1 topic 5%).
+  # Topic SCORES cannot be used to detect ambiguity: they are unnormalised and
+  # frequently cluster near 1.0 (a real example scores 1.000/0.998/0.997 across three
+  # topics), so a score-margin rule flags confident papers as ambiguous and vice versa.
+  #
+  # purity = (topics in the primary field) / (total topics).
+  #
+  # At purity 1/3 the label is a minority verdict, one topic outvoting two. Example:
+  # "Machine learning for perovskite materials design and discovery" is labelled
+  # Engineering on the strength of one topic while its other two are Materials
+  # Science. If such a paper becomes a gold for a Materials Science query, the pair
+  # is scored CROSS when it is really SAME -- a fabricated cross-domain row in the
+  # exact stratum the thesis measures.
+  min_purity: 0.66          # keep 3/3 and 2/3, drop 1/3
+
+domains:
+  - id: cs
+    name: Computer Science
+    openalex_field: Computer Science
+    openalex_field_id: 17
+    fulltext:
+      primary: arxiv                    # LaTeX source; no PDF, no OCR, no GPU
+      source_id: S4306400194
+  - id: physics
+    name: Physics
+    openalex_field: Physics and Astronomy
+    openalex_field_id: 31
+    fulltext:
+      primary: arxiv
+      source_id: S4306400194
+  - id: biology
+    name: Biology
+    openalex_field: Biochemistry, Genetics and Molecular Biology
+    openalex_field_id: 13
+    fulltext:
+      primary: pmc                      # JATS XML; sections pre-labelled
+      source_id: S2764455111
+  - id: matsci
+    name: Materials Science
+    openalex_field: Materials Science
+    openalex_field_id: 25
+    fulltext:
+      primary: arxiv                    # cond-mat.mtrl-sci
+      source_id: S4306400194
+  - id: maths
+    name: Mathematics
+    openalex_field: Mathematics
+    openalex_field_id: 26
+    fulltext:
+      primary: arxiv                    # math.*
+      source_id: S4306400194
+
+# Every domain is restricted to papers carrying a structured-full-text record
+# (arXiv source or PubMed Central XML). MinerU and PDF conversion are therefore not
+# used anywhere in QUARTET. TOMATO-Star needed MinerU because it worked from PDFs;
+# at 7,000 papers per domain all four targets are met from structured sources alone.
+# Measured availability against the 6,000/1,000 targets:
+#   cs      train 37,979   test 17,065
+#   physics train 126,417  test 16,346
+#   biology train 624,545  test 46,369
+#   matsci  train 14,142   test  2,090   <- binding constraint, still clears
+
+# --------------------------------------------------------------------------- targets
+# Per domain, matching the scale of the existing v16sc TOMATO graphs so that
+# results transfer without a size confound.
+targets:
+  per_domain:
+    train_source_papers: 6000
+    test_source_papers:  1000
+
+  # Materials science cannot reach the common target and no filter change rescues it.
+  # Measured on a 100-paper random sample of matsci train: 60 fetched, 39 failed because
+  # the arXiv deposit is a PDF with no LaTeX source, so no text exists to extract. Against
+  # a collected pool of 6,381 train and 1,027 test that projects to ~3,800 and ~620, and
+  # a further ~10% arrive with no reference list and cannot ground inspirations.
+  #
+  # Relaxing the purity filter does NOT help: the papers it drops sit at 0.33 purity,
+  # meaning one of three topics is materials science. Admitting those would corrupt the
+  # same/cross domain labels the entire benchmark rests on, to buy papers that are barely
+  # materials science. An under-target domain is honest; a mislabelled one is not.
+  #
+  # Uneven per-domain sizes are reported rather than hidden. ResearchBench is likewise
+  # uneven across its twelve disciplines.
+  per_domain_override:
+    matsci:
+      train_source_papers: 3000
+      test_source_papers:   500
+      reason: >
+        arXiv PDF-only deposits cap the extractable pool at ~60% of collected, against
+        91-96% for the other four domains. Measured, not estimated: 100-paper sample,
+        2026-07-31.
+
+  pooled:
+    # Four domains at 6,000/1,000 plus materials science at 3,000/500.
+    train_source_papers: 27000
+    test_source_papers:  4500
+
+  # Stage 1 collects the FULL eligible pool, not the target. The 50/50 balance can
+  # only be applied after extraction (a paper's inspirations, and therefore their
+  # domains, are unknown until it has been decomposed and resolved), so the pool has
+  # to be large enough to subsample from. Required over-collection is 1/(2c) where c
+  # is the natural cross-domain rate; c has never been published for these four
+  # domains, so the pilot measures it before the real collection is sized.
+  collect_full_pool: true
+  pool_cap_per_domain_split: 60000
+
+# --------------------------------------------------------------------------- retrieval
+retrieval:
+  # A query is one (paper, step) pair, as in TOMATO-Star: a paper with k inspirations
+  # yields k queries, each retrieving one gold. Query ids are `{year}_{id}::{step}`,
+  # matching the existing graph format so nothing downstream changes.
+  query_granularity: paper_step
+  # The corpus is POOLED across all four domains at evaluation time. If a biology
+  # query only ever ranks against biology documents, cross-domain retrieval cannot
+  # be measured and the four-domain design buys nothing.
+  pool_corpus_at_eval: true
+  corpus_composition: golds_only   # every document is some query's gold; no distractors
+  train_test_corpus_disjoint: true
+
+# --------------------------------------------------------------------------- balance
+# QUARTET is a BALANCED benchmark, not a natural sample. Evaluation rows are
+# subsampled to 50/50 same-domain / cross-domain. This must be stated wherever
+# results are reported: the naturally occurring cross-domain rate is far lower
+# (8.3% in TOMATO train, 9.2% in TOMATO test), so QUARTET deliberately overstates
+# how often cross-domain retrieval is required. That is the point -- equal strata
+# give equal statistical power and stop the aggregate metric being dominated by
+# the same-domain majority -- but it is a stress test, not a population estimate.
+# --------------------------------------------------------------------------- strata
+# Binary only. The unit is one (query, gold) pair, so a paper with k inspirations
+# contributes k rows and they may fall in different strata: the stratum is a property
+# of the inspiration, not of the paper.
+#
+#   same   source paper's openalex field == gold inspiration's openalex field
+#   cross  they differ
+#
+# A gold whose field cannot be trusted (purity < min_purity, or unresolvable in
+# OpenAlex) yields no scored row, but its DOCUMENT stays in the corpus as a distractor.
+strata:
+  labels: [same, cross]
+  unit: query_gold_pair
+  field: primary_topic.field          # same rule for source papers and golds
+  unlabelled_gold: drop_row_keep_document
+
+balance:
+  target_cross_fraction: 0.50
+  applies_to: [train, test]
+  # Balance the POOLED set, not each domain separately. Per-domain balancing is
+  # possible but costs 2-4x more collection: at ResearchBench's observed rates a
+  # domain with a 12.5% natural cross rate must be over-collected fourfold before
+  # enough cross golds exist to balance against. Pooled balancing exploits the
+  # spread instead: physics contributes surplus cross rows, materials science
+  # contributes surplus same rows, and the pool evens out.
+  level: pooled
+  report_per_domain_rates: true
+  # Balancing is applied by DOWN-SAMPLING same-domain EVALUATION ROWS only.
+  # Documents dropped from the eval set REMAIN IN THE CORPUS, where they act as
+  # distractors for other queries. The corpus size targets are therefore met from
+  # the full unbalanced gold set; only the scored rows are balanced.
+  method: downsample_same_domain_eval_rows
+  keep_dropped_golds_in_corpus: true
+
+# --------------------------------------------------------------------------- extraction
+# --------------------------------------------------------------------------- full text
+fulltext:
+  # The single authoritative cap on stored paper text, in characters.
+  #
+  # This used to live in the QUARTET_MAX_CHARS environment variable, read separately by
+  # Stage 2 and Stage 3. An environment variable is per-terminal, so the same corpus was
+  # fetched at 200,000 in one shell and 150,000 in another, and Stage 3 then silently
+  # truncated what Stage 2 had stored. Config is committed and shared, so it cannot drift.
+  #
+  # 150,000 is ~37k tokens against a 1M context, so cost is the binding constraint rather
+  # than capacity. Measured on 303 papers across all five domains, roughly 1% exceed it,
+  # and those are review articles whose tail is the least useful part.
+  max_chars: 150000
+
+extraction:
+  decomposition_model: deepseek-reasoner   # R1: the judgement is genuinely hard here
+  checker_model:       deepseek-chat       # V3: mechanical, no chain of thought needed
+  gold_source: citations                   # NOT LLM-proposed; TOMATO-Star's tightening
+  gold_resolution:
+    api: semantic_scholar
+    min_similarity: 0.85
+  quality_gates: [necessity, sufficiency, disjointness, non_redundancy]
+
+# --------------------------------------------------------------------------- validation
+validation:
+  # Fidelity: run the reimplemented pipeline over papers already in TOMATO-Star and
+  # score recovery of their published gold DOIs. Neither TOMATO-Star nor ResearchBench
+  # released construction code, so this is the only available check that the
+  # reimplementation is faithful -- and it yields a number for the thesis.
+  fidelity_check:
+    source: tomato_star_train
+    n_papers: 200
+    metric: gold_doi_recovery
+  human_spot_check:
+    n_papers: 50
+    annotators: 1     # state this plainly; ResearchBench used 5 experts on 62 papers

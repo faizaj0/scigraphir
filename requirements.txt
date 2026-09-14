@@ -1,0 +1,24 @@
+# Local pipeline: graph construction, hypothetical answers, scoring, tables and figures.
+# Training and the graph reasoner need the engine as well:  pip install -e retriever/gfm-rag
+# (install PyTorch and PyTorch Geometric for your CUDA version first). The Colab notebooks
+# install their own dependencies.
+numpy
+scipy
+pandas
+tqdm
+pyyaml
+requests
+httpx
+openai
+torch
+sentence-transformers
+transformers
+rank_bm25
+matplotlib
+pillow
+
+# optional
+anthropic          # sciafford/extract_frames.py --provider anthropic
+python-dotenv      # .env.local files
+hydra-core         # analysis workflows that load a trained checkpoint (also pulled in by the engine)
+omegaconf

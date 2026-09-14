@@ -1,3 +1,0 @@
-# Staged trees are regenerable from quartet/data/benchmark in seconds (~31 MB/domain).
-data/
-*.zip

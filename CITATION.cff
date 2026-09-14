@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this code or the SIR-4 benchmark, please cite the thesis."
+type: software
+title: "SciGraphIR"
+authors:
+  - family-names: Jalil
+    given-names: Faiza
+repository-code: "https://github.com/faizaj0/scigraphir"
+date-released: 2026-09-14
+preferred-citation:
+  type: thesis
+  thesis-type: "MSc thesis"
+  title: "SciGraphIR: knowledge-graph reasoning for scientific inspiration retrieval"
+  authors:
+    - family-names: Jalil
+      given-names: Faiza
+  institution:
+    name: "Imperial College London"
+  year: 2026
