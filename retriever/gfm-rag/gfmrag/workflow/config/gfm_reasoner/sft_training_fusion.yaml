@@ -1,9 +1,10 @@
-# G-Reasoner SFT — CARGO fusion (v16sc graph + operator, learned jointly in ONE run).
-# = base sft_training.yaml, but: (1) model is FusionGraphReasoner (wraps GraphReasoner, fuses the
-# operator score into the document logits with a learned per-query gate); (2) losses are bce + pcr on
-# the FUSED score (NO mse distillation — the operator is a fused signal, not a teacher); (3) the
-# trainer adds a small graph-alone aux loss (weight AUX_W) so the from-scratch GNN learns alongside.
-# Operator scores come from env OPERATOR_SCORES (train) / OPERATOR_SCORES_TEST (test).
+# SciGraphIR fusion configuration on the G-Reasoner engine.
+# The shared base preserves the handcrafted semantic channel for compatibility.
+# Thesis runs select semantic=mlp and CCMP=1 in their experiment overrides:
+# learned multi-view scoring with PMI-style specificity correction, Contrastive
+# Continuation Message Passing, and a query-adaptive additive fusion router.
+# Semantic inputs use SEMANTIC_COMPONENTS[_TEST]; the handcrafted comparison uses
+# HANDCRAFTED_COMPONENTS[_TEST]. See docs/README.md for the contribution-to-code map.
 hydra:
   run:
     dir: outputs/qa_finetune/${now:%Y-%m-%d}/${now:%H-%M-%S}
@@ -36,18 +37,18 @@ datasets:
   data_loading_workers: 4
 
 # Fusion model: wraps the v16sc GraphReasoner; entity_model is instantiated and passed through.
-# The operator is recomputed live from cached ingredients (OPERATOR_COMPONENTS[_TEST]) so its
+# The handcrafted scorer is recomputed live from cached ingredients (HANDCRAFTED_COMPONENTS[_TEST]) so its
 # scalars w=[w0,w1,w2] and beta are LEARNED jointly (warm-started at fitted values, base LR).
 model:
   _target_: gfmrag.models.fusion_reasoner.FusionGraphReasoner
-  gamma_init: 0.01         # gate near zero: on step 1 the model IS the operator (opt-in graph, protects same-domain)
+  gamma_init: 0.01         # gate near zero: on step 1 the model IS the handcrafted (opt-in graph, protects same-domain)
   gate_hidden: 8
-  op_lr_scale: 1.0         # operator scalars learn at the full base LR (4 params, warm-started, fast to fit)
-  # Which scorer supplies the semantic channel. "operator" is the handcrafted sum+max
-  # scorer with the leave-one-out anti-hub term; "mlp" is the learned sorted-input MLP
-  # with a predicted popularity discount, warm-started from SEMANTIC_CKPT/SEMANTIC_POPNET.
+  op_lr_scale: 1.0         # handcrafted scalars learn at the full base LR (4 params, warm-started, fast to fit)
+  # Which scorer supplies the semantic channel. "handcrafted" is the handcrafted sum+max
+  # scorer with the leave-one-out specificity correction term; "mlp" is the learned sorted-input MLP
+  # with a predicted background matchability discount, warm-started from SEMANTIC_CKPT/SEMANTIC_POPNET.
   # Everything else about the fusion is identical, so the pair is a controlled comparison.
-  semantic: operator
+  semantic: handcrafted
   semantic_train: true     # keep the learned scorer training under the fusion's ranking loss
   # Cross-Query Informativeness Gating. cqig=false attaches no hooks at all, so the
   # ungated arm is bit-identical to a build without it.
@@ -59,7 +60,7 @@ model:
   #   cqig_norm:   layer (default) | node | energy   -- see the header of cqig.py
   #   cqig_layers: last (default) | all | "6" | "3-6" | "3,5,6"   -- 1-INDEXED
   #   cqig_op:     gate (default) | centre | centre-fixed        -- CQIG_OP
-  #     Which OPERATOR the same statistic drives. gate scales the state by g; centre
+  #     Which message operator the same statistic drives. gate scales the state by g; centre
   #     subtracts (1-g)*mu, so an uninformative node sends its residual instead of a
   #     quieter copy of itself; centre-fixed subtracts a constant lam*mu, which is the
   #     query-independent rung of the ladder. lam=0 recovers the ungated model under all

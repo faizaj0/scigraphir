@@ -10,7 +10,7 @@ Colab:
 Then download predictions_reasonir_tomato.json to
   TOMATO-Star/outputs/caches/reasonir/  and run augment_arms.
 
-Output format = CARGO prediction list:
+Output format = SciGraphIR prediction list:
   [{id, supporting_documents, predictions:{document:[[doc_id, score], ...]}}]
 so augment_arms.py (and eval/score_* tools) read it unchanged.
 ~10 min on an A100 for 3k docs + 500 queries.

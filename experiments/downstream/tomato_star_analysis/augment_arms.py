@@ -5,7 +5,7 @@ using the same first-resolvable-key rule as build_inputs (a ranked key that has 
 title/abstract in the corpus is skipped to the next one).
 
 Accepted prediction formats (auto-detected):
-  A. CARGO/SciGraphIR list: [{id, supporting_documents, predictions:{document:[[key,score],...]}}]
+  A. SciGraphIR list: [{id, supporting_documents, predictions:{document:[[key,score],...]}}]
      (ranked by score, descending)
   B. MOOSE-Chem style dict: {query_id: [key, key, ...]}  (already ranked)
 

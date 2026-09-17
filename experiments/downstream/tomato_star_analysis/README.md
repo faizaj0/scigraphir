@@ -8,7 +8,7 @@ checkout, so **run them from the TOMATO-Star checkout** under `$EXTERNAL_REPOS`,
 `../run_downstream_sir4.sh` does. `build_inputs_sir4.py` reads this repository's predictions
 through `SCIGRAPHIR_ROOT`.
 
-Pipeline (thesis Chapter 9, downstream results):
+Downstream evaluation pipeline:
 
 | Step | Script | What |
 |---|---|---|

@@ -5,7 +5,7 @@ each into one of the 4 OpenAlex top-level domains from its title+abstract via gp
 so they stop being dropped from the same/cross split.
 
 Writes: outputs/caches/gold_domain_overrides.json  { gold_key: domain }
-Run:    cd CARGO && OPENAI_API_KEY=... python -m cargo.resolve
+Run:    OPENAI_API_KEY=... python -m retriever.tomato_star.resolve
 Cost:   ~40 calls, well under $0.05.
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ def main():
     path.write_text(json.dumps(out, indent=2))
     print(f"[resolve] resolved {len(out)}/{len(none_keys)} -> {path.name}")
     print(f"[resolve] domains: {dict(Counter(out.values()))}")
-    print("[resolve] now rerun:  python -m cargo.data   (rebuild)  then  python -m scripts.03_baselines")
+    print("[resolve] now rerun:  python -m retriever.tomato_star.data   (rebuild)  then  python -m scripts.03_baselines")
 
 
 if __name__ == "__main__":

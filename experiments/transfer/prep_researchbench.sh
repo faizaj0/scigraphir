@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # prep_researchbench.sh -- Phase 1 of the transfer experiment. Run once.
 #
-# Produces everything both checkpoints share: frames, probes, the master graph and
-# the full-pool operator components. Nothing here is specific to a checkpoint, and
+# Produces everything both checkpoints share: affordance representations, hypothetical answers, the master graph and
+# the full-pool handcrafted scorer components. Nothing here is specific to a checkpoint, and
 # nothing here reads a gold label.
 #
 # RESEARCHBENCH IS EVALUATION-ONLY. There is no train split and none is created.
@@ -27,10 +27,10 @@
 #   bash transfer/prep_researchbench.sh --spend --build    # everything, locally
 set -euo pipefail
 
-CARGO="${SCIGRAPHIR_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-KG="$CARGO/retriever"
-V16="$CARGO/sciafford"
-S4="$CARGO/experiments"
+REPO_ROOT="${SCIGRAPHIR_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+KG="$REPO_ROOT/retriever"
+V16="$REPO_ROOT/sciafford"
+S4="$REPO_ROOT/experiments"
 DS=researchbench
 GRAPH="${DS}_test_v16sc"
 WORKERS="${WORKERS:-512}"
@@ -89,12 +89,12 @@ PY
 # ---------------------------------------------------------------- step 1
 say "1. frames  (PAID, ~\$7, the dominant cost)"
 for side in doc query; do
-  paid "cd '$V16' && python3 extract_frames.py --dataset $DS --side $side --split test --workers $WORKERS"
+  paid "cd '$V16' && python3 extract_affordances.py --dataset $DS --side $side --split test --workers $WORKERS"
 done
 
 # ---------------------------------------------------------------- step 2
-say "2. probes  (PAID, small)"
-paid "cd '$KG' && python3 probes/gen_probes.py --dataset $DS --split test --workers $WORKERS"
+say "2. hypothetical answers  (PAID, small)"
+paid "cd '$KG' && python3 hypothetical_answers/generate_answers.py --dataset $DS --split test --workers $WORKERS"
 
 # ---------------------------------------------------------------- step 3
 # tau_canon 0.95 is not the default and matters: at 0.85 two thirds of one node type
@@ -109,13 +109,13 @@ elif ready "$DOCF" "step 1 (document frames)"; then
 fi
 
 # ---------------------------------------------------------------- step 4
-say "4. operator components over the master document order  (free, BGE-heavy)"
+say "4. handcrafted components over the master document order  (free, BGE-heavy)"
 if [[ -f "$KG/data/$GRAPH/operator_components.npz" ]]; then echo "   already built"
 elif ready "$NODES" "step 3 (master graph)" && [[ -f "$PROBF" ]]; then
-  cd "$KG" && python3 precompute/precompute_operator_components.py \
+  cd "$KG" && python3 precompute/precompute_handcrafted_components.py \
       --graph $GRAPH --split test
 else
-  [[ -f "$PROBF" ]] || skip "waiting on step 2 (probes)"
+  [[ -f "$PROBF" ]] || skip "waiting on step 2 (hypothetical answers)"
 fi
 
 # ---------------------------------------------------------------- step 5
@@ -137,7 +137,7 @@ fi
 
 # ---------------------------------------------------------------- where are we
 say "state"
-for pair in "$DOCF|document frames" "$QRYF|query frames" "$PROBF|probes" \
+for pair in "$DOCF|document frames" "$QRYF|query frames" "$PROBF|hypothetical answers" \
             "$NODES|master graph" "$KG/data/$GRAPH/operator_components.npz|operator components" \
             "$S4/data/predictions_bge_${DS}_test.json|BGE baseline"; do
   f="${pair%%|*}"; label="${pair##*|}"
@@ -150,7 +150,7 @@ for pair in "$DOCF|document frames" "$QRYF|query frames" "$PROBF|probes" \
 done
 cat <<'EOF'
 
-   expected: 20,322 doc frames | 1,367 query frames | 1,367 probes
+   expected: 20,322 doc frames | 1,367 query frames | 1,367 hypothetical answers
    next once all six are [x]:
      python3 transfer/build_candidate_views.py      (Phase 2, local, free)
      then the Colab notebook                        (Phase 3, GPU)

@@ -1,23 +1,33 @@
-# Handcrafted semantic scorer (the operator)
+# Shared embeddings and handcrafted scorer
 
-`operator_scorer.py` is the handcrafted scorer that preceded the learned multi-view scorer:
+[Retriever](../README.md) · [Final semantic model](../../experiments/eval/semantic_scorer.py)
 
+[handcrafted_scorer.py](handcrafted_scorer.py) combines two roles:
+
+- Shared encoder selection, query instructions, and embedding caches used by semantic
+  scoring, precomputation, and dense baselines.
+- The earlier handcrafted semantic scorer, selected as `handcrafted` in fusion experiments.
+
+Its score combines direct query similarity with the sum and maximum of hypothetical-answer
+similarities, corrected by a leave-one-out background matchability term:
+
+```text
+s = w0 * z(dense) + w1 * z(S / background matchability^beta) + w2 * z(M / background matchability^beta)
 ```
-S_op = w0 z(dense) + w1 z(S / dem^b) + w2 z(M / dem^b)
-```
 
-`dense` is the query-document cosine, `S` and `M` are the sum and max of the
-hypothetical-answer cosines, and `dem` is a leave-one-out popularity term that penalises
-documents which match everybody's answers. The four scalars are fitted by InfoNCE on a
-training slice and are learned again inside the fusion.
+The final thesis semantic model is `SortedMLPScorer` in
+[semantic_scorer.py](../../experiments/eval/semantic_scorer.py). It reuses the encoding/cache
+helpers here. The [code guide](../../docs/README.md#2-multi-view-semantic-scoring) traces the
+complete semantic branch.
 
-The file also defines the encoder (BGE-large or Qwen3-Embedding), the query instruction and
-the embedding cache that the learned scorer (`../../experiments/eval/semantic_scorer.py`), the
-dense baselines (`../../experiments/eval/bge_sir4.py`) and the precompute scripts import, so
-every arm sees identical vectors.
-
-Scoring lives in `../../experiments/eval/score_sir4.py`; predictions use one schema:
+Retrieval metrics are implemented separately in
+[score_sir4.py](../../experiments/eval/score_sir4.py). A prediction record uses this shape:
 
 ```json
-{"id": "...", "stratum": "cross", "supporting_documents": ["doi"], "predictions": {"document": [["doi", 0.91], ...]}}
+{
+  "id": "query-id",
+  "stratum": "cross",
+  "supporting_documents": ["gold-document-id"],
+  "predictions": {"document": [["document-id", 0.91]]}
+}
 ```

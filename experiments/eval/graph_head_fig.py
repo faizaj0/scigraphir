@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 graph_head_fig.py -- the head of the ranking only: share of golds ranked within k for k = 1..10, graph channel alone,
-one small panel per dataset, cross-field golds (top row) and same-field golds (bottom row). Curves: SciAffordGraph
+one small panel per dataset, cross-field golds (top row) and same-field golds (bottom row). Curves: SciAfford graph
 reasoner with the CCMP gate on, the same weights with the gate off, the OpenIE entity-graph reasoner, and the text
 scorer / Qwen3 cosine as references. Also writes a table of R@1 / R@3 / R@5 / R@10 for every curve.
 
@@ -18,10 +18,10 @@ INK, MUTED, RULE = "#262a30", "#7c828c", "#ced2da"
 C_FRAME, C_ENT, C_SC, C_COS = "#2a69a0", "#d9701a", "#705296", "#8a9099"
 DATASETS = [("sir4_cs", "SIR-4 CS"), ("sir4_biology", "SIR-4 Biology"), ("sir4_physics", "SIR-4 Physics"), ("sir4_matsci", "SIR-4 MatSci"), ("tomato", "TOMATO"), ("mir", "MIR")]
 _QC = f"{S4}/results/qualitative/quartet_cache"
-QUARTET = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
+SIR4_EXPORTS = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
 KS = list(range(1, 11))
-SPEC = {"frame_on": ("SciAffordGraph reasoner, CCMP gate on", C_FRAME, "-", "o", True),
-        "frame_off": ("SciAffordGraph reasoner, CCMP gate off (same weights)", C_FRAME, "--", "o", False),
+SPEC = {"frame_on": ("SciAfford graph reasoner, CCMP gate on", C_FRAME, "-", "o", True),
+        "frame_off": ("SciAfford graph reasoner, CCMP gate off (same weights)", C_FRAME, "--", "o", False),
         "entity": ("OpenIE entity-graph reasoner", C_ENT, "-", "s", True),
         "scorer": ("text scorer, no graph (reference)", C_SC, "-.", "^", True),
         "cosine": ("Qwen3 cosine (reference)", C_COS, ":", "D", False)}
@@ -38,10 +38,10 @@ def openie_path(d, prefix="hops_"):
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def load(path):
@@ -67,9 +67,9 @@ def main():
         ARM, ARMLAB = frame_arm(d, "hops_", a.arm); F = load(f"{d}/hops_{ARM}.json"); O = load(f"{d}/hops_{ARM}_off.json") if os.path.exists(f"{d}/hops_{ARM}_off.json") else {}
         _ep = openie_path(d); E = load(_ep) if _ep else {}
         unit = "query stratum"
-        if ds in QUARTET and os.path.exists(QUARTET[ds]):
+        if ds in SIR4_EXPORTS and os.path.exists(SIR4_EXPORTS[ds]):
             qz = {}
-            for x in json.load(open(QUARTET[ds])):
+            for x in json.load(open(SIR4_EXPORTS[ds])):
                 for doc, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], doc)] = m.get("stratum")
             for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
             unit = "gold stratum"
@@ -93,7 +93,7 @@ def main():
             if ri == 1 or ds == "mir": ax.set_xlabel("rank k of the gold", fontsize=8, color=INK)
     order = [k for k in ("frame_on", "frame_off", "entity", "scorer", "cosine") if k in handles]
     fig.legend([handles[k] for k in order], [SPEC[k][0] for k in order], loc="lower center", ncol=3, fontsize=8.2, frameon=False, handlelength=3.2, columnspacing=1.8, bbox_to_anchor=(0.5, -0.05))
-    fig.text(0.01, 0.975, "The head of the ranking: share of golds within the top k, k = 1 to 10, graph channel alone (SIR-4 fields use the per-gold QUARTET stratum; TOMATO and MIR the query stratum)", fontsize=9.2, color=INK, ha="left")
+    fig.text(0.01, 0.975, "The head of the ranking: share of golds within the top k, k = 1 to 10, graph channel alone (SIR-4 fields use the per-gold SIR-4 stratum; TOMATO and MIR the query stratum)", fontsize=9.2, color=INK, ha="left")
     fig.savefig(a.out + ".pdf", bbox_inches="tight"); fig.savefig(a.out + ".png", dpi=200, bbox_inches="tight")
     open(a.out + ".md", "w").write("\n".join(rows) + "\n"); print("wrote", a.out + ".png", a.out + ".md")
 

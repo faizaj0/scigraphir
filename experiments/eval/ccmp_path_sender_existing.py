@@ -3,7 +3,7 @@
 
 Reads the 8 Sep 2026 showcase scan (results/qualitative/drive_scan_<dataset>/hops_frame_ccmp{,_off}.json:
 zero-shot pair CCMP checkpoints outputs/sir4_zeroshot/scigraphir_<pair>_qwenmlp_ccmp_e10_b2 on the
-<dataset>_test_v16sc frame graphs, bfloat16, beam 10, top-5 paths per target) and writes
+<dataset>_test_v16sc affordance representation graphs, bfloat16, beam 10, top-5 paths per target) and writes
 
     eval/ccmp_path_sender_cases.json                                    the examples for the notebook,
                                                                         with the stored paths as a
@@ -26,24 +26,24 @@ EXAMPLES = [
     {"name": "biology_optimal_transport", "dataset": "sir4_biology",
      "query_id": "10.1021_acsomega.5c12723", "gold_id": "10.1007/s11263-023-01831-9",
      "quartet": {"domain_distance": "disjoint", "field_pair": "Biochemistry, Genetics and Molecular Biology -> Computer Science",
-                 "gold_stratum": "cross", "source": "benchmark/data/benchmark/biology_test_low/eval.json"},
+                 "gold_stratum": "cross", "source": "sir-4/data/benchmark/biology_test_low/eval.json"},
      "graph_score_9sep": {"on": 48.750, "off": 15.062,
                           "source": "Drive outputs/scan/sir4_biology/fig_gate_decomp_sir4_biology.md, gate-decomposition run "
                                     "of 9 Sep 2026 (same checkpoint and graph, bfloat16): gate on rank 3 / gate off rank 436"}},
     {"name": "creativity_fixation", "dataset": "sir4_cs",
      "query_id": "10.48550_arxiv.2602.20408", "gold_id": "10.3758/bf03202751",
      "quartet": {"domain_distance": "disjoint", "field_pair": "Computer Science -> Psychology", "gold_stratum": "cross",
-                 "source": "benchmark/data/benchmark/cs_test_final/eval.json"}},
+                 "source": "sir-4/data/benchmark/cs_test_final/eval.json"}},
     {"name": "memory_reconsolidation", "dataset": "sir4_cs",
      "query_id": "10.48550_arxiv.2603.03985", "gold_id": "10.1111/j.1749-6632.2010.05443.x",
      "quartet": {"domain_distance": "disjoint", "field_pair": "Computer Science -> Neuroscience", "gold_stratum": "cross",
-                 "source": "benchmark/data/benchmark/cs_test_final/eval.json"}},
+                 "source": "sir-4/data/benchmark/cs_test_final/eval.json"}},
     {"name": "dueling_bandits", "dataset": "sir4_cs",
      "query_id": "10.48550_arxiv.2602.21585", "gold_id": "q:4f02a72cb830786c",
      "quartet": {"domain_distance": "overlap_1", "field_pair": "Computer Science -> Decision Sciences", "gold_stratum": "same",
-                 "note": "query stratum is cross, but QUARTET's gold-level label is same (field confidence ambiguous); "
+                 "note": "query stratum is cross, but SIR-4's gold-level label is same (field confidence ambiguous); "
                          "cite as a within-CS decision-theory example, not as cross-field",
-                 "source": "benchmark/data/benchmark/cs_test_final/eval.json"}},
+                 "source": "sir-4/data/benchmark/cs_test_final/eval.json"}},
 ]
 
 
@@ -129,7 +129,7 @@ def main():
         ro, rf = t_on["rank"], t_off["rank"]
         md += [f"## {ex['name']}", "",
                f"**Query** ({ex['query_id']}, {ex['dataset']}, stratum {rec_on.get('stratum')}): {rec_on['question'][:350]}…", "",
-               f"**Target paper**: {entry['gold_title']} (`{ex['gold_id']}`); QUARTET gold-level label: {ex['quartet']['domain_distance']}, "
+               f"**Target paper**: {entry['gold_title']} (`{ex['gold_id']}`); SIR-4 gold-level label: {ex['quartet']['domain_distance']}, "
                f"{ex['quartet']['field_pair']}, stratum {ex['quartet']['gold_stratum']}.", "",
                f"**Graph rank** CCMP on {ro['graph']} / all gates 1 {rf['graph']}; fused rank {ro['fused']} / {rf['fused']}; "
                f"scorer rank {ro['scorer']}; dense (Qwen3 cosine) rank {ro['dense']}."

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SIR-4 downstream hypothesis-quality experiment (thesis Table 9.3 layout), all four subsets.
 # Usage:  bash run_downstream_sir4.sh <stage>
-#   build        API-free: inputs from the QUARTET records + saved rankings (re-run after downloads)
+#   build        API-free: inputs from the SIR-4 records + saved rankings (re-run after downloads)
 #   compose      gpt-4o-mini compositions, one call per (query, arm), resumable   (~$7)
 #   judge-build  API-free: batch request file + cost estimate
 #   judge-submit submit the gpt-4o batch                                          (~$28)

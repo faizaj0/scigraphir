@@ -35,16 +35,16 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-CARGO = HERE.parents[2]
-RB_DEFAULT = Path(os.environ.get("EXTERNAL_REPOS") or Path(__file__).resolve().parents[2] / "external") / "ResearchBench"
-OUT_DEFAULT = CARGO / "retriever" / "data" / "researchbench_test"
+REPO_ROOT = HERE.parents[1]
+RB_DEFAULT = Path(os.environ.get("EXTERNAL_REPOS") or REPO_ROOT / "external") / "ResearchBench"
+OUT_DEFAULT = REPO_ROOT / "retriever" / "data" / "researchbench_test"
 SCHEMA_VERSION = 2
 FIELD_SELECT = "id,doi,display_name,primary_topic,topics"
 
 
 def load_resolver():
     """Load SIR-4's tested matcher and field-labelling policy."""
-    path = CARGO / "quartet" / "build" / "04_resolve.py"
+    path = REPO_ROOT / "sir-4" / "build" / "04_resolve.py"
     spec = importlib.util.spec_from_file_location("sir4_resolve_for_rb", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load SIR-4 resolver from {path}")

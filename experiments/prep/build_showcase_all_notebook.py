@@ -23,7 +23,7 @@ from build_showcase_notebook import tolerate_pyg_fix  # noqa: E402
 SRC_NB = f"{ROOT}/notebooks/colab_mir_all.ipynb"      # its fusion blob carries interpret(); overlay = the newest repo scripts
 SETUP = [("import os, shutil", "first", "2b. Qwen3-Embedding (cached on Drive)"),
          ("import os, sys, torch", "first", "3. Engine"),
-         ("# === write the CARGO-fusion files", "first", "3b. Fusion sources (with interpret())"),
+         ("# === write the SciGraphIR-fusion files", "first", "3b. Fusion sources (with interpret())"),
          ("# Cell 3a is reused VERBATIM", "first", "3c. Config defaults"),
          ("# The ULTRA layers vendored", "last", "3d. PyG version fix"),
          ("# THE TRAINING SUBPROCESS IS A FRESH PYTHON", "last", "3e. torchvision shim"),
@@ -171,7 +171,7 @@ print(f"engine + Qwen3 + component tables needed: {NEED_ENGINE}"
 '''
 
 UNPACK = r'''# 2. Unpack every bundle side by side into one local root (caches kept) and install the CURRENT
-# repo scripts. Bundles: <dataset>_bundle.zip on Drive, each with the frame graph and (except TOMATO
+# repo scripts. Bundles: <dataset>_bundle.zip on Drive, each with the SciAfford graph and (except TOMATO
 # before its OpenIE run) the OpenIE graph of its test split.
 # Re-running this cell in the same runtime (after fixing something downstream) re-uses what is already
 # unpacked; set FORCE_UNPACK = True to wipe /content/scigraphir and start over.
@@ -232,7 +232,7 @@ def set_dataset(d):
         if k.startswith(("CCMP", "ROUTE", "STRAT_", "CQIG", "RESID_", "MISS_W")): os.environ.pop(k)
 
 def sections_for(d):
-    """The sections this dataset still needs. 'components' builds the operator/semantic tables and
+    """The sections this dataset still needs. 'components' builds the handcrafted scorer/semantic tables and
     restores the index over Drive FUSE (minutes); it is only ever used by a scan or a path search."""
     P = PLAN[d]
     todo = ["graphs", "model_env"]
@@ -316,9 +316,9 @@ def main() -> int:
     header = md("# Qualitative showcase, all datasets\n\n"
                 "One runtime, every dataset in `DATASETS` (SIR-4 CS / biology / physics / materials science, TOMATO-Star, MIR):\n\n"
                 "1. every gold of every test query ranked under the graph channel alone, the multi-view scorer, Qwen3 cosine and the fused "
-                "score, per arm (frame graph + CCMP, same weights with the CCMP gate off, no-CCMP control, OpenIE graph; arms whose "
+                'score, per arm (SciAfford graph + CCMP, same weights with the CCMP gate off, no-CCMP control, OpenIE graph; arms whose '
                 "checkpoint is missing are skipped);\n"
-                "2. NBFNet-style gradient beam search from the query's seed frames to every gold of every cross-field query (plus 120 same-field "
+                "2. NBFNet-style gradient beam search from the query's seed nodes to every gold of every cross-field query (plus 120 same-field "
                 "queries), with the CCMP gate on every hop;\n"
                 "3. `eval/showcase.py`: candidates ranked for a reader (cosine buries the gold, the model recovers it through a mechanism route), "
                 "the GFM-RAG Table-4 LaTeX, the Fig-6-style hop figure; then one multi-dataset figure.\n\n"

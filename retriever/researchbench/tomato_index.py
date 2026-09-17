@@ -7,7 +7,7 @@ overlap exactly rather than assert it is zero.
 
 Three layers, from narrowest to widest. Report all three; the honest headline is L3.
 
-  L1  graph corpus     the documents.json the v16sc graph was actually built over (7,000 docs)
+  L1  graph corpus     the documents.json the SciAfford graph was actually built over (7,000 docs)
   L2  training bundle  the wider document pool the training examples were sampled from
   L3  full TOMATO-Star every source paper and every retrieved inspiration in data/train.jsonl,
                        i.e. everything the *dataset* covers, whether or not our run touched it
@@ -36,7 +36,7 @@ from norm import norm_title, norm_doi
 BASE = (os.environ.get("SCIGRAPHIR_ROOT") or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 TOMATO_STAR = os.path.join(os.environ.get("EXTERNAL_REPOS") or os.path.join(BASE, "external"), "TOMATO-Star")
 
-# L1: the corpus the v16sc graph was built over -- what the model provably saw.
+# L1: the corpus the SciAfford graph was built over -- what the model provably saw.
 L1_PATHS = [
     f"{BASE}/drive_data_v16sc/tomato_train_v16sc/raw/documents.json",
     f"{BASE}/retriever/data/tomato_train/raw/documents.json",

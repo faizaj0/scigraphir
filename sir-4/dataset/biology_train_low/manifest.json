@@ -1,0 +1,54 @@
+{
+  "split": "biology_train_low",
+  "source": "04_resolved/biology_train_low.jsonl",
+  "papers_in": 7493,
+  "decomposed": 4170,
+  "queries": 3954,
+  "eval_rows": 12203,
+  "documents": 15589,
+  "title_only_documents": 2736,
+  "families": 3954,
+  "set_aware_queries": 3954,
+  "alternative_only_documents": 4908,
+  "queries_with_alternative_only_golds": 2958,
+  "eval_files": {
+    "eval.json": "set-aware, one row per query, THE evaluation",
+    "eval_primary.json": "D1 only, flat, TOMATO-comparable"
+  },
+  "stratum": {
+    "same": 11417,
+    "cross": 786
+  },
+  "domain_distance": {
+    "same_primary": 9183,
+    "disjoint": 786,
+    "overlap_1": 1422,
+    "overlap_2plus": 687
+  },
+  "field_confidence": {
+    "clear": 9307,
+    "ambiguous": 2771,
+    "None": 125
+  },
+  "label_basis": {
+    "topics": 12077,
+    "primary_fallback": 1,
+    "None": 125
+  },
+  "cross_rows_on_ambiguous_field": 199,
+  "queries_without_stratum_evidence": 3,
+  "queries_partially_labelled": 114,
+  "primary_rows_without_stratum_evidence": 125,
+  "uniqueness_after_resolution": {
+    "not_falsified": 963,
+    "falsified": 2958,
+    "resolution_incomplete": 33
+  },
+  "excluded": {
+    "primary_incomplete": 216
+  },
+  "options": {
+    "drop_title_only": false,
+    "keep_partial": false
+  }
+}

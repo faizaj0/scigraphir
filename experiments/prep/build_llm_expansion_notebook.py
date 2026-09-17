@@ -137,7 +137,7 @@ DOCS, QS, SETS = {}, {}, {}
 for ds, (_, sx) in DATASETS.items():
     need = [f"retriever/data/{ds}_{SPLIT}/raw/documents.json",
             f"retriever/data/{ds}_{SPLIT}/raw/{SPLIT}.json"]
-    if sx: need.append(f"benchmark/data/benchmark/{sx}/sets.json")
+    if sx: need.append(f"sir-4/data/benchmark/{sx}/sets.json")
     z = None
     for m in need:
         if not os.path.exists(f"{WRK}/{m}"):

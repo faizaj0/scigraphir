@@ -12,7 +12,7 @@ THREE PROPERTIES THAT MATTER:
       whole pipeline after a crash costs nothing and repeats nothing. This is
       what makes `--phase all` safe to just run again.
 
-  PAID WORK IS GATED.  `extract` and `probes` cost money. They refuse to run
+  PAID WORK IS GATED.  `extract` and `hypothetical answers` cost money. They refuse to run
       without --spend, and print an estimate first. Everything else is free and
       runs unprompted.
 
@@ -52,10 +52,10 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-KG, V16 = f"{CARGO}/retriever", f"{CARGO}/sciafford"
+REPO_ROOT = os.path.dirname(ROOT)
+KG, V16 = f"{REPO_ROOT}/retriever", f"{REPO_ROOT}/sciafford"
 sys.path.insert(0, HERE)
-sys.path.insert(0, CARGO)
+sys.path.insert(0, REPO_ROOT)
 from stage_sir4 import BENCH, DOMAINS                       # noqa: E402
 
 SPLITS = ("train", "test")
@@ -106,8 +106,8 @@ def state(dom: str) -> dict:
         fr[s] = (nlines(f"{V16}/cache/{ds(dom)}/frames_doc_{s}.jsonl") >= 0.98 * d > 0 and
                  nlines(f"{V16}/cache/{ds(dom)}/frames_query_{s}.jsonl") >= 0.98 * q > 0)
         pr[s] = nlines(f"{KG}/probes/cache/{ds(dom)}/probes_{s}.jsonl") >= 0.98 * q > 0
-    st["frames"] = all(fr.values())
-    st["probes"] = all(pr.values())
+    st["affordances"] = all(fr.values())
+    st["answers"] = all(pr.values())
     st["graphs"] = all(os.path.exists(
         f"{KG}/data/{ds(dom)}_{s}_v16sc/processed/stage1/nodes.csv") for s in SPLITS)
     st["bundle"] = os.path.exists(f"{ROOT}/{ds(dom)}_bundle.zip")
@@ -149,12 +149,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--domain", default="all",
                     help="comma separated, or 'all'")
-    ap.add_argument("--phase", default="all",
-                    choices=["stage", "extract", "probes", "graph", "audit",
+    ap.add_argument("--phase", type=lambda v: {"probes": "answers"}.get(v, v), default="all",
+                    choices=["stage", "extract", "answers", "graph", "audit",
                              "bundle", "notebook", "ship", "all"],
                     help="'ship' = audit + bundle + notebook")
     ap.add_argument("--spend", action="store_true",
-                    help="required for the paid phases (extract, probes)")
+                    help="required for the paid phases (extract, hypothetical answers)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--workers", type=int, default=512,
                     help="tier 5 allows 30,000 RPM; 512 concurrent at ~1.5s/call "
@@ -172,7 +172,7 @@ def main() -> int:
             return print(f"unknown domain {d!r}; known: {sorted(DOMAINS)}") or 2
 
     if a.status:
-        keys = ["staged", "frames", "probes", "graphs", "bundle", "notebook"]
+        keys = ["staged", "affordances", "answers", "graphs", "bundle", "notebook"]
         print(f"\n{'domain':9} {'docs':>7} {'queries':>8} | " +
               " ".join(f"{k:>8}" for k in keys) + "   remaining $")
         print("-" * 96)
@@ -181,7 +181,7 @@ def main() -> int:
             st = state(d)
             dt = sum(counts(d, s)[0] for s in SPLITS)
             qt = sum(counts(d, s)[1] for s in SPLITS)
-            due = 0.0 if st["frames"] and st["probes"] else (dt + qt) * COST_PER_ITEM
+            due = 0.0 if st["affordances"] and st["answers"] else (dt + qt) * COST_PER_ITEM
             tot += due
             print(f"{d:9} {dt:7,} {qt:8,} | " +
                   " ".join(f"{'yes' if st[k] else '-':>8}" for k in keys) +
@@ -189,13 +189,13 @@ def main() -> int:
         print(f"\nremaining extraction cost: ~${tot:.2f}")
         return 0
 
-    phases = (["stage", "extract", "probes", "graph", "audit", "bundle", "notebook"]
+    phases = (["stage", "extract", "answers", "graph", "audit", "bundle", "notebook"]
               if a.phase == "all" else
               ["audit", "bundle", "notebook"] if a.phase == "ship" else [a.phase])
 
     # Cost gate: one estimate for everything about to be spent, up front.
-    if not a.dry_run and any(p in phases for p in ("extract", "probes")):
-        todo = [d for d in doms if a.force or not (state(d)["frames"] and state(d)["probes"])]
+    if not a.dry_run and any(p in phases for p in ("extract", "answers")):
+        todo = [d for d in doms if a.force or not (state(d)["affordances"] and state(d)["answers"])]
         est = sum((sum(counts(d, s)[0] for s in SPLITS) +
                    sum(counts(d, s)[1] for s in SPLITS)) * COST_PER_ITEM for d in todo)
         if todo and not a.spend:
@@ -211,7 +211,7 @@ def main() -> int:
               "  ".join(f"{k}={'y' if v else 'n'}" for k, v in st.items()) +
               f"\n{'='*70}")
         for ph in phases:
-            done = {"stage": st["staged"], "extract": st["frames"], "probes": st["probes"],
+            done = {"stage": st["staged"], "extract": st["affordances"], "answers": st["answers"],
                     "graph": st["graphs"], "bundle": st["bundle"],
                     "notebook": st["notebook"], "audit": False}[ph]
             if done and not a.force:
@@ -220,15 +220,15 @@ def main() -> int:
             print(f"  [run ] {ph}")
 
             if ph == "stage":
-                run(f"python3 {HERE}/stage_sir4.py --domain {dom}", CARGO, a.dry_run)
+                run(f"python3 {HERE}/stage_sir4.py --domain {dom}", REPO_ROOT, a.dry_run)
             elif ph == "extract":
                 for s in SPLITS:
                     for side in ("doc", "query"):
-                        run(f"python3 extract_frames.py --dataset {ds(dom)} --side {side} "
+                        run(f"python3 extract_affordances.py --dataset {ds(dom)} --side {side} "
                             f"--split {s} --workers {a.workers}", V16, a.dry_run)
-            elif ph == "probes":
+            elif ph == "answers":
                 for s in SPLITS:
-                    run(f"python3 probes/gen_probes.py --dataset {ds(dom)} "
+                    run(f"python3 hypothetical_answers/generate_answers.py --dataset {ds(dom)} "
                         f"--split {s} --workers {a.workers}", KG, a.dry_run)
             elif ph == "graph":
                 if not a.dry_run:

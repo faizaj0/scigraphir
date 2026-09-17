@@ -464,7 +464,7 @@ def render_report(payload, out_dir):
                        if matched else "the old figure's weights or ranks do not reproduce exactly at this precision. "
                        "Use these new matched measurements; inspect historical_comparison in results.json before reusing old percentages."), ""]
         elif case.get("historical_reference_applicable") is False:
-            lines += ["The old figure used a frame-only checkpoint/graph. Its weights are retained as provenance, "
+            lines += ['The old figure used a affordance representation-only checkpoint/graph. Its weights are retained as provenance, '
                       "not used as a numerical reproduction target for this merged-graph experiment.", ""]
     (out / "report.md").write_text("\n".join(lines))
     for name, data in (("paths.csv", rows), ("hops.csv", hops), ("effects.csv", effects)):

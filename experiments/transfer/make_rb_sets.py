@@ -33,8 +33,8 @@ from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-RB = f"{CARGO}/retriever/data/researchbench_test"
+REPO_ROOT = os.path.dirname(ROOT)
+RB = f"{REPO_ROOT}/retriever/data/researchbench_test"
 
 
 def main() -> int:

@@ -24,7 +24,7 @@ def graph_files(data, graph):
 
 
 def fixture(root, dataset="sir4_cs"):
-    drive, data = root / "drive", root / "cargo/retriever/data"
+    drive, data = root / "drive", root / "scigraphir/retriever/data"
     spec = {"frame": f"{dataset}_test_v16sc",
             "sem": {"field": (f"outputs/{dataset}/semantic", dataset),
                     "frame": ("outputs/sir4_zeroshot/semantic_sir4_cs", "sir4_cs")},

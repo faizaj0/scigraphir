@@ -11,11 +11,11 @@ gold document with the gate on vs off, plus the gate values the model assigned a
     (c) the gate along the top route to each gold: by the type of node the hop enters, and last hop vs inner hops
 
 Inputs are the hops files written by the showcase notebook (hops_frame_ccmp.json, hops_frame_ccmp_off.json), which
-carry rank = {fused, graph, scorer, dense} per gold and the gate per hop of every recorded path; the QUARTET eval.json
+carry rank = {fused, graph, scorer, dense} per gold and the gate per hop of every recorded path; the SIR-4 eval.json
 gives the stratum (cross / same). Run:
 
     python3 eval/ccmp_effect_fig.py --dir results/qualitative/drive_scan_sir4_cs --docs ../retriever/data/sir4_cs_test/raw/documents.json \
-        --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json --out ../figures/fig_ccmp_effect_cs
+        --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json --out ../figures/fig_ccmp_effect_cs
 """
 import argparse, collections, json, math, os, random
 
@@ -53,13 +53,13 @@ def boot_mean(v, B=2000, seed=0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--docs", required=True)
-    ap.add_argument("--quartet", default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default="")
+    ap.add_argument("--sir4", "--quartet", dest='sir4', default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default="")
     a = ap.parse_args()
     on = load(f"{a.dir}/{a.prefix}frame_ccmp.json"); off = load(f"{a.dir}/{a.prefix}frame_ccmp_off.json")
     docs = json.load(open(a.docs))
     strat = {}
-    if a.quartet and os.path.exists(a.quartet):
-        for x in json.load(open(a.quartet)):
+    if a.sir4 and os.path.exists(a.sir4):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): strat[(x["id"], d)] = m.get("stratum")
     keys = [k for k in on if k in off and on[k]["rank"].get("graph") and off[k]["rank"].get("graph")]
     grp = {"cross": [k for k in keys if strat.get(k) == "cross"], "same": [k for k in keys if strat.get(k) == "same"]}

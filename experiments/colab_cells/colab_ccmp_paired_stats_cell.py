@@ -2,7 +2,7 @@
 # For each gold document: its rank with the CCMP gate on vs off (same weights), graph channel and fused score, counted as
 # better / worse / same with the mean change in log10 rank and a bootstrap CI, split by stratum. Also CCMP-trained vs the
 # no-CCMP control where both hops files exist (frame_ccmp vs frame_nocc, hyb_ccmp vs hyb_nocc). Reads outputs/scan/<dataset>/hops_*.json
-# written by the showcase notebooks; SIR-4 fields use the per-gold QUARTET stratum when the CARGO tree is unpacked, else the query stratum.
+# written by the showcase notebooks; SIR-4 fields use the per-gold SIR-4 stratum when the SciGraphIR tree is unpacked, else the query stratum.
 import os, sys, glob, subprocess
 if not os.path.isdir("/content/drive/MyDrive"):
     from google.colab import drive; drive.mount("/content/drive")
@@ -72,14 +72,14 @@ def main():
     ap.add_argument("--root", default=None, help="directory whose subdirectories are datasets")
     ap.add_argument("--dir", action="append", default=[], help="name=path, repeatable")
     ap.add_argument("--prefix", default="hops_"); ap.add_argument("--out", default=None)
-    ap.add_argument("--quartet", action="append", default=[], help="name=eval.json: per-GOLD stratum from QUARTET (SIR-4); otherwise the query stratum in the hops file is used")
+    ap.add_argument("--sir4", "--sir4", dest='sir4', action="append", default=[], help="name=eval.json: per-GOLD stratum from SIR-4; otherwise the query stratum in the hops file is used")
     a = ap.parse_args()
     dirs = [(os.path.basename(p.rstrip("/")), p) for p in sorted(glob.glob(f"{a.root}/*/")) ] if a.root else []
     dirs += [tuple(x.split("=", 1)) for x in a.dir]
     assert dirs, "give --root or --dir"
     res = {}; md = []
     qz = {}
-    for x in a.quartet:
+    for x in a.sir4:
         nm, path = x.split("=", 1); m = {}
         for row in json.load(open(path)):
             for doc, meta in (row.get("quartet", {}).get("per_document") or {}).items(): m[(row["id"], doc)] = meta.get("stratum")
@@ -91,7 +91,7 @@ def main():
             new, base = load(fnew), load(fbase); keys = [k for k in new if k in base]
             if name in qz:   # per-gold stratum (a query can have cross- and same-field golds)
                 new = {k: (qz[name].get(k) or "unlabelled", v[1]) for k, v in new.items()}
-            unit = "stratum of the gold (QUARTET)" if name in qz else "stratum of the query (hops file)"
+            unit = "stratum of the gold (SIR-4)" if name in qz else "stratum of the query (hops file)"
             strata = sorted({new[k][0] for k in keys})
             groups = [("all", keys)] + [(s, [k for k in keys if new[k][0] == s]) for s in strata if s != "unlabelled"]
             tag = f"{name} · {arm} · " + ("gate on vs off, same weights" if kind == "gate" else "CCMP-trained vs control")
@@ -115,8 +115,8 @@ print("datasets with hops files:", [os.path.basename(d) for d in sorted(glob.glo
 cmd = [sys.executable, "/content/eval/ccmp_paired_stats.py", "--root", SCAN, "--out", f"{SCAN}/ccmp_paired_stats_all"]
 _root = globals().get("SCIGRAPHIR_ROOT", "/content/scigraphir")
 for fld in ("cs", "biology", "physics", "matsci"):
-    _qt = f"{_root}/benchmark/data.nosync/benchmark/{fld}_test_final/eval.json"
-    if os.path.exists(_qt): cmd += ["--quartet", f"sir4_{fld}={_qt}"]
-    else: print(f"sir4_{fld}: no QUARTET eval.json under {_root}; using the query stratum of the hops file")
+    _qt = f"{_root}/sir-4/data/benchmark/{fld}_test_final/eval.json"
+    if os.path.exists(_qt): cmd += ["--sir4", f"sir4_{fld}={_qt}"]
+    else: print(f"sir4_{fld}: no SIR-4 eval.json under {_root}; using the query stratum of the hops file")
 print(subprocess.run(cmd, capture_output=True, text=True).stdout[-12000:])
 print("saved:", f"{SCAN}/ccmp_paired_stats_all.md")

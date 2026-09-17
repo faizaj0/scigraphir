@@ -39,7 +39,7 @@ ARMS, PRED = [], {}      # section 3 (baselines) is not replayed; the scorer cel
 _run("score helper",     _pick(lambda s: s.startswith("# 4. Score every baseline")))      # defines score(); baselines re-score from Drive in seconds
 _run("engine",           _pick(lambda s: s.startswith("import os, sys, torch") and "gfm-rag-adapted.zip" in s))
 _run("pins",             _pick(lambda s: '_im.version("wandb")' in s or 'wandb.__version__.startswith("0.18.")' in s, optional=True), fatal=False)
-_run("fusion sources",   _pick(lambda s: s.startswith("# === write the CARGO-fusion files")))
+_run("fusion sources",   _pick(lambda s: s.startswith("# === write the SciGraphIR-fusion files")))
 _run("config defaults",  _pick(lambda s: s.startswith("# Cell 3a is reused VERBATIM")))
 _run("PyG version fix",  _pick(lambda s: s.startswith("# The ULTRA layers vendored"), "last"))
 _run("torchvision shim", _pick(lambda s: s.startswith("# THE TRAINING SUBPROCESS IS A FRESH PYTHON"), "last"))

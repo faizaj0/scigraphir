@@ -1,17 +1,21 @@
 """
-Materialize the v16 soft+canon(0.85) graph as a GFM-RAG / G-Reasoner stage1 dataset for a split.
+Build the affordance component of SciAfford in GFM-RAG stage1 format.
 
-Reads   cache/frames_doc_{split}.jsonl, cache/frames_query_{split}.jsonl
-Writes  <out>/{dataset}_{split}_v16sc/processed/stage1/{nodes.csv, edges.csv, relations.csv, {split}.json}
+Reads cached document and problem requirement representations. Writes typed nodes, relations, edges
+and query seeds under retriever/data/<dataset>_<split>_v16sc/processed/stage1/.
+This `_v16sc` component is consumed by experiments/prep/build_hybrid_graph.py,
+which assembles the default `_hyb` graph with OpenIE entity context and direct
+paper-to-affordance links. It is also retained for component comparisons.
 
-Construction (identical to the PPR champion config):
-  1. base frame graph (build_graph.py logic)
-  2. consolidation: per-type single-linkage clusters at cosine >= tau_canon (0.85), merge to canonical node
-  3. soft edges: per-type mutual-8NN in [tau_edge, cap] with typed relations + polarity guard
-  4. query start_nodes: each query phrase snapped to top-3 nearest canonical node >= tau_snap (0.60)
+Construction:
+  1. Create role-typed relations for contribution capabilities and requirements.
+  2. Consolidate same-type concepts using single-linkage cosine clusters.
+  3. Add typed soft semantic links with a polarity guard.
+  4. Align query requirements to canonical concepts for graph seeding.
 
-  python build_greasoner_dataset.py --split test
-  python build_greasoner_dataset.py --split train   # needs train frames extracted first
+From the sciafford directory:
+    python build_greasoner_dataset.py --dataset sir4_cs --split test
+    python build_greasoner_dataset.py --dataset sir4_cs --split train
 """
 import argparse, csv, json, os, sys, re
 import numpy as np
@@ -24,7 +28,7 @@ KG = os.path.join(ROOT, "retriever")
 CACHE = f"{HERE}/cache"
 # One resolver for corpus + caches; default "tomato" reproduces every legacy path.
 sys.path.insert(0, ROOT)
-from scigraphir_paths import (add_dataset_arg, banner, corpus_dir, frames_path,  # noqa: E402
+from scigraphir_paths import (add_dataset_arg, banner, corpus_dir, affordances_path,  # noqa: E402
                          graph_cache_dir, graph_name, is_legacy, set_dataset)
 EMBED_MODEL = "BAAI/bge-large-en-v1.5"
 csv.field_size_limit(10 ** 8)
@@ -54,7 +58,7 @@ def polarity(p):
 
 
 def build_base(docs):
-    """v16 build_graph.py logic -> node_type, edges, doc_provs"""
+    """SciAfford role-typed graph construction -> node_type, edges, doc_provs"""
     node_type, edges = {}, set()
 
     def add_node(name, typ):
@@ -164,23 +168,23 @@ def main():
     ap.add_argument("--tau_ent", type=float, default=0.60)
     ap.add_argument("--topk_ent", type=int, default=3)
     add_dataset_arg(ap)
-    ap.add_argument("--probe_seeds", action="store_true", default=True, help="add BGE document/probe seeds (from v6rel retrieval)")
-    ap.add_argument("--no_probe_seeds", dest="probe_seeds", action="store_false")
+    ap.add_argument("--answer_seeds", "--probe_seeds", dest="answer_seeds", action="store_true", default=True, help='add BGE document/hypothetical answer seeds (from OpenIE retrieval)')
+    ap.add_argument("--no_answer_seeds", "--no_probe_seeds", dest="answer_seeds", action="store_false")
     a = ap.parse_args()
     set_dataset(a.dataset)
     print(banner())
 
-    docf, qf = frames_path("doc", a.split), frames_path("query", a.split)
+    docf, qf = affordances_path("doc", a.split), affordances_path("query", a.split)
     # The back-compat fallback to the bare frames_doc.jsonl is TOMATO-ONLY. It
     # used to fire for any dataset, which silently built a `sir4_cs_smoke_test`
     # graph out of 3,182 TOMATO queries -- named for one corpus, made of another,
-    # and with no error. `frames_path()` already handles TOMATO's unsuffixed test
+    # and with no error. `affordances_path()` already handles TOMATO's unsuffixed test
     # filename, so this only covers datasets predating that helper.
     if is_legacy() and a.split == "test" and not os.path.exists(docf):
         docf, qf = f"{CACHE}/frames_doc.jsonl", f"{CACHE}/frames_query.jsonl"
-    assert os.path.exists(docf), f"missing {docf} -- run extract_frames.py --side doc for split={a.split}"
+    assert os.path.exists(docf), f"missing {docf} -- run extract_affordances.py --side doc for split={a.split}"
 
-    def load(p): return {json.loads(l)["id"]: (json.loads(l).get("frame") or {}) for l in open(p)}
+    def load(p): return {json.loads(l)["id"]: (json.loads(l).get("affordance", json.loads(l).get("frame")) or {}) for l in open(p)}
     docs, queries = load(docf), load(qf)
     node_type, edges = build_base(docs)
     print(f"[ds] base: {len(node_type)} nodes, {len(edges)} edges")
@@ -258,7 +262,7 @@ def main():
     qmeta = {t["id"]: t for t in tests}
     doc_nodes = {n for n, t in new_type.items() if t == "document"}
 
-    # per-query raw frame phrases (built once)
+    # per-query raw affordance representation phrases (built once)
     q_raw = {}
     for qid, fr in queries.items():
         raw = defaultdict(list)
@@ -297,26 +301,26 @@ def main():
             np.savez(cp, ph=np.array(allp, object), emb=np.stack([d[p] for p in allp]))
         return {p: d[p] for p in phrases}
 
-    # BATCH-embed every unique frame phrase per type ONCE (cached across reruns)
-    frame_emb = {}
+    # BATCH-embed every unique affordance representation phrase per type ONCE (cached across reruns)
+    affordance_emb = {}
     for ty in SEED_T:
         uphr = [p for raw in q_raw.values() for p in raw.get(ty, [])]
-        frame_emb[ty] = cached_embed(uphr, f"frame_{ty}") if uphr else {}
+        affordance_emb[ty] = cached_embed(uphr, f"frame_{ty}") if uphr else {}
 
-    # ENTITY channel: v6rel's query-side entity terms + BGE document/probe seeds (both graph-agnostic)
-    q_entities, ent_emb, q_probes = {}, {}, {}
+    # ENTITY channel: the OpenIE graph's query-side entity terms + BGE document/hypothetical answer seeds (both graph-agnostic)
+    q_entities, ent_emb, q_answers = {}, {}, {}
     v6f = f"{KG}/data/{graph_name(a.split, "v6r")}/processed/stage1/{a.split}.json"
     if os.path.exists(v6f):
         for q in json.load(open(v6f)):
             q_entities[q["id"]] = [strip(e) for e in q.get("start_nodes", {}).get("entity", [])]
-            q_probes[q["id"]] = [d for d in q.get("start_nodes", {}).get("document", []) if d in doc_nodes]
+            q_answers[q["id"]] = [d for d in q.get("start_nodes", {}).get("document", []) if d in doc_nodes]
         if a.entity_seeds and all_mat is not None:
             uniq = [p for ps in q_entities.values() for p in ps]
             if uniq:
                 ent_emb = cached_embed(uniq, "entity")
-        print(f"[ds] entity+probe channel: entity phrases={len(ent_emb)}  mean probes/q={np.mean([len(v) for v in q_probes.values()]):.1f}")
+        print(f"[ds] entity+hypothetical answer channel: entity phrases={len(ent_emb)}  mean answers/q={np.mean([len(v) for v in q_answers.values()]):.1f}")
     else:
-        print(f"[ds] entity/probe channel skipped: missing {v6f}")
+        print(f"[ds] entity/hypothetical answer channel skipped: missing {v6f}")
 
     # ---- precompute snapping ONCE per unique phrase (batched matmul), then O(1) lookup per query ----
     # ~40 entity terms/query over 9669 queries = ~387k occurrences, but only ~36k unique terms;
@@ -336,25 +340,25 @@ def main():
                 out[phrases[i0 + r]] = [reps[int(j)] for j in idx[r] if S[r, int(j)] >= tau]
         return out
 
-    frame_snap = {ty: batch_snap(frame_emb.get(ty, {}), cmat.get(ty), reps_by_type.get(ty, []),
+    affordance_snap = {ty: batch_snap(affordance_emb.get(ty, {}), cmat.get(ty), reps_by_type.get(ty, []),
                                  a.topk, a.tau_snap) for ty in SEED_T}
     ent_snap = batch_snap(ent_emb, all_mat, all_reps, a.topk_ent, a.tau_ent) if a.entity_seeds else {}
 
     out_queries = []
     for qid, fr in tqdm(queries.items(), total=len(queries), desc="snap seeds"):
         start = defaultdict(list)
-        # frame seeds (precomputed lookup)
+        # affordance representation seeds (precomputed lookup)
         for ty in SEED_T:
-            fs = frame_snap[ty]
+            fs = affordance_snap[ty]
             for p in set(q_raw[qid].get(ty, [])):
                 start[ty].extend(fs.get(p, []))
         # entity seeds (precomputed lookup)
         if a.entity_seeds:
             for term in q_entities.get(qid, []):
                 start["entity"].extend(ent_snap.get(term, []))
-        # probe/document seeds: BGE top-k similar docs (same corpus/DOIs as v6rel)
-        if a.probe_seeds:
-            start["document"].extend(q_probes.get(qid, []))
+        # hypothetical answer/document seeds: BGE top-k similar docs (same corpus/DOIs as the OpenIE graph)
+        if a.answer_seeds:
+            start["document"].extend(q_answers.get(qid, []))
         m = qmeta.get(qid, {})
         gold = m.get("supporting_documents") or []
         out_queries.append({

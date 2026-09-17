@@ -11,8 +11,8 @@ import pprint
 
 
 S4 = Path(__file__).resolve().parents[1]
-CARGO = S4.parent
-ENGINE = CARGO / "retriever/gfm-rag"
+REPO_ROOT = S4.parent
+ENGINE = REPO_ROOT / "retriever/gfm-rag"
 OUT = S4 / "notebooks/colab_table4_openie.ipynb"
 
 
@@ -31,7 +31,7 @@ This notebook tests whether suppressing messages outside selected paths is suffi
 
 All implementation is visible below as normal Python and `%%writefile` cells. There are no encoded source blobs or runtime source decoding.
 
-Merged-graph checkpoints are preferred together with their matching `_test_hyb` graph and field scorer. If no merged checkpoint exists under `outputs/sir4_hyb/`, the notebook prints an explicit fallback and uses the previous frame checkpoint.
+Merged-graph checkpoints are preferred together with their matching `_test_hyb` graph and field scorer. If no merged checkpoint exists under `outputs/sir4_hyb/`, the notebook prints an explicit fallback and uses the previous affordance representation checkpoint.
 
 The main contrast is `outside_suppress − off`. A positive value means that suppressing outside messages was sufficient to raise attribution for that fixed path in that example. Path weights are mean edge gradients, not probabilities or products of gates. Retrieval scores and ranks are reported separately.
 """
@@ -217,15 +217,15 @@ print("torch", torch.__version__, "| GPU", torch.cuda.get_device_name())
 
 
 PROJECT_SOURCES = [
-    ("/content/scigraphir/scigraphir_paths.py", CARGO / "scigraphir_paths.py"),
-    ("/content/scigraphir/retriever/eval/operator_scorer.py",
-     CARGO / "retriever/eval/operator_scorer.py"),
+    ("/content/scigraphir/scigraphir_paths.py", REPO_ROOT / "scigraphir_paths.py"),
+    ('/content/scigraphir/retriever/eval/handcrafted_scorer.py',
+     REPO_ROOT / 'retriever/eval/handcrafted_scorer.py'),
     ("/content/scigraphir/experiments/eval/semantic_scorer.py",
      S4 / "eval/semantic_scorer.py"),
-    ("/content/scigraphir/retriever/precompute/precompute_operator_components.py",
-     CARGO / "retriever/precompute/precompute_operator_components.py"),
+    ('/content/scigraphir/retriever/precompute/precompute_handcrafted_components.py',
+     REPO_ROOT / 'retriever/precompute/precompute_handcrafted_components.py'),
     ("/content/scigraphir/retriever/precompute/precompute_semantic_components.py",
-     CARGO / "retriever/precompute/precompute_semantic_components.py"),
+     REPO_ROOT / "retriever/precompute/precompute_semantic_components.py"),
 ]
 
 ENGINE_SOURCES = [

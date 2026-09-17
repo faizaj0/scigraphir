@@ -43,8 +43,8 @@ import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-RB = f"{CARGO}/retriever/data/researchbench_test"
+REPO_ROOT = os.path.dirname(ROOT)
+RB = f"{REPO_ROOT}/retriever/data/researchbench_test"
 
 # FROZEN. This is the lexicon that measured TOMATO-Star at 89.5% biomedical. Editing
 # it after results exist would silently redefine the headline denominator, so if it

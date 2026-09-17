@@ -86,7 +86,7 @@ def main() -> int:
     a = ap.parse_args()
     lines = ["| dataset | graph | stratum | queries | seeded | walk nDCG@5 | R@5 | R@10 |", "|---|---|---|--:|--:|--:|--:|--:|"]
     for ds in a.datasets.split(","):
-        for g, label in ((f"{ds}_test_v16sc", "SciAffordGraph"), (f"{ds}_test", "OpenIE")):
+        for g, label in ((f"{ds}_test_v16sc", "SciAfford graph"), (f"{ds}_test", "OpenIE")):
             stage1 = f"{a.data}/{g}/processed/stage1"
             if not os.path.exists(f"{stage1}/test.json"):
                 print(f"[skip] {g}: no stage1/test.json", file=sys.stderr); continue

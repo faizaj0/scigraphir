@@ -4,17 +4,17 @@ graph_channel_curves.py -- where each scorer ranks the gold, as cumulative curve
 on ALL golds and on the SEMANTICALLY DIFFICULT golds (Qwen3 cosine ranks them beyond --buried), which is what the graph
 channel is for. Two rows: the graph channel alone, and the final ranking.
 
-  (a) graph channel alone, all golds          SciAffordGraph reasoner . OpenIE entity-graph reasoner . scorer . cosine
+  (a) graph channel alone, all golds          SciAfford graph reasoner . OpenIE entity-graph reasoner . scorer . cosine
   (b) graph channel alone, buried golds       same curves on golds with cosine rank > --buried
   (c) final ranking, all golds                SciGraphIR (fused) . OpenIE model (fused) . multi-view scorer . cosine
   (d) final ranking, buried golds
 
-One figure per stratum (cross / same) from hops_frame_ccmp.json (+ hops_openie.json); QUARTET eval.json gives the
+One figure per stratum (cross / same) from hops_frame_ccmp.json (+ hops_openie.json); SIR-4 eval.json gives the
 per-gold stratum for SIR-4, else the query stratum in the hops file. Ranks are the scan ranks stored per gold:
 rank = {fused, graph, scorer, dense}; the OpenIE model's fused/scorer are its own.
 
     python3 eval/graph_channel_curves.py --dir results/qualitative/drive_scan_sir4_cs \
-        --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_channel_curves_cs
+        --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_channel_curves_cs
 """
 import argparse, json, os
 
@@ -38,10 +38,10 @@ def openie_path(d, prefix="hops_"):
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def load(path):
@@ -63,21 +63,21 @@ def style(ax):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--quartet", default=None)
+    ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--sir4", "--quartet", dest='sir4', default=None)
     ap.add_argument("--out", required=True); ap.add_argument("--buried", type=int, default=100); ap.add_argument("--title", default="")
-    ap.add_argument("--arm", default="auto", help="SciAffordGraph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
+    ap.add_argument("--arm", default="auto", help="SciAfford graph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
     a = ap.parse_args()
-    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAffordGraph arm:", ARM, f"({ARMLAB})")
+    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAfford graph arm:", ARM, f"({ARMLAB})")
     F = load(f"{a.dir}/{a.prefix}{ARM}.json")
     _ep = openie_path(a.dir, a.prefix); E = load(_ep) if _ep else {}
     O = load(f"{a.dir}/{a.prefix}{ARM}_off.json") if os.path.exists(f"{a.dir}/{a.prefix}{ARM}_off.json") else {}   # same weights, gate off
     unit = "query stratum (hops file)"
-    if a.quartet and os.path.exists(a.quartet):
+    if a.sir4 and os.path.exists(a.sir4):
         qz = {}
-        for x in json.load(open(a.quartet)):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], d)] = m.get("stratum")
         for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
-        unit = "gold stratum (QUARTET)"
+        unit = "gold stratum (SIR-4)"
     n_doc = max((v["n_doc"] or 0) for v in F.values()) or 5000; ks = [k for k in KS if k < n_doc] + [n_doc]
     labels = {v["stratum"] for v in F.values()} - {"unlabelled"}
     strata = [s for s in ("cross", "same") if s in labels] or sorted(labels) or ["all"]     # SIR-4: cross/same; TOMATO/MIR: their own labels
@@ -85,8 +85,8 @@ def main():
         for v in F.values(): v["stratum"] = "all"
     summary = {"unit": unit, "buried": a.buried, "n_doc": n_doc}
     # one figure per dataset: columns = strata (cross | same), rows = all golds | golds cosine buries beyond --buried
-    SPEC = {"frame_on": (f"SciAffordGraph reasoner ({ARMLAB}), CCMP gate on", C_FRAME, "-", "o", True),
-            "frame_off": (f"SciAffordGraph reasoner ({ARMLAB}), CCMP gate off (same weights)", C_FRAME, "--", "o", False),
+    SPEC = {"frame_on": (f"SciAfford graph reasoner ({ARMLAB}), CCMP gate on", C_FRAME, "-", "o", True),
+            "frame_off": (f"SciAfford graph reasoner ({ARMLAB}), CCMP gate off (same weights)", C_FRAME, "--", "o", False),
             "entity": ("OpenIE entity-graph reasoner", C_ENT, "-", "s", True),
             "scorer": ("text scorer, no graph (reference)", C_SC, "-.", "^", True),
             "cosine": ("Qwen3 cosine (reference)", C_COS, ":", "D", False)}

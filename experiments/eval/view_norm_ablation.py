@@ -9,7 +9,7 @@ scores change the sorted-MLP scorer (the thesis semantic scorer)?
              apply and that the shipped design deliberately dropped.
 
 Everything else is semantic_scorer.py unchanged: same arm (mlp), same loss, same
-popularity predictor (joint, as in the thesis), same fit/dev split (--seed 0),
+background matchability predictor (joint, as in the thesis), same fit/dev split (--seed 0),
 same selection rule. Each training seed is run on its own so the comparison is
 paired per seed and reported as mean +/- sd over seeds, not best-of-3.
 
@@ -68,7 +68,7 @@ def run_one(variant, seed, a, out):
             "--epochs", str(a.epochs), "--patience", str(a.patience),
             "--lr", str(a.lr), "--mlp_hidden", str(a.mlp_hidden),
             "--qbatch", str(a.qbatch), "--loss", a.loss,
-            "--select_on", a.select_on, "--mlp_popularity", "1",
+            "--select_on", a.select_on, "--mlp-matchability", "1",
             "--mlp_pop_joint", str(a.joint), "--cache_only", "--out", out]
     print(f"\n##### {variant} seed {seed}: {' '.join(argv[1:])}", flush=True)
     old = sys.argv
@@ -135,8 +135,8 @@ def analyze(a, out_root):
         return
     lines = [f"# view normalisation ablation: sorted-MLP scorer, {a.dataset}",
              "", f"fit/dev split seed {a.split_seed}; training seeds {seeds}; "
-             f"select_on {a.select_on}; loss {a.loss}; joint popularity {a.joint}",
-             f"beta (learned popularity exponent): "
+             f"select_on {a.select_on}; loss {a.loss}; joint background matchability {a.joint}",
+             f"beta (learned background matchability exponent): "
              + ", ".join(f"{v}/s{s}={betas[(v, s)]:.3f}" for (v, s) in sorted(betas)),
              f"epochs run: " + ", ".join(f"{v}/s{s}={epochs[(v, s)]}" for (v, s) in sorted(epochs)),
              ""]
@@ -191,9 +191,9 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--mlp_hidden", type=int, default=16)
     ap.add_argument("--qbatch", type=int, default=8)
-    ap.add_argument("--loss", default="fixed", choices=["fixed", "operator"])
+    ap.add_argument("--loss", default="fixed", type=lambda v: {"operator": "handcrafted"}.get(v, v), choices=["fixed", 'handcrafted'])
     ap.add_argument("--select_on", default="ndcg100", choices=["ndcg", "ndcg100", "loss"])
-    ap.add_argument("--joint", type=int, default=1, help="1 = popularity predictor trained jointly (thesis)")
+    ap.add_argument("--joint", type=int, default=1, help="1 = background matchability predictor trained jointly (thesis)")
     ap.add_argument("--bge", default=None, help="BGE predictions for the similar/dissimilar slices")
     ap.add_argument("--out", default=None)
     ap.add_argument("--cpu", type=int, default=1, help="1 = force CPU (9x faster than MPS for this model)")

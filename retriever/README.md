@@ -1,44 +1,58 @@
-# retriever: engine, semantic-branch inputs, corpora
+# Retriever
 
-Everything the retriever needs at training and inference time, apart from the SciAfford
-graph builder (`../sciafford/`) and the experiment tooling (`../experiments/`).
+[Repository home](../README.md) · [Code guide](../docs/README.md) · [Setup](../docs/SETUP.md)
 
-| Path | What it is | Thesis |
+The retrieval system has a semantic branch, a graph branch, and an adaptive fusion router.
+The default graph combines affordance structure, OpenIE entity context and direct
+paper-to-affordance links; its saved graph names end in `_hyb`.
+This directory contains the graph engine and most retrieval support code. The final
+semantic scorer currently lives in `experiments/eval/`; it is linked explicitly below.
+
+## Read the thesis method
+
+| Component | Start here | Purpose |
 |---|---|---|
-| `gfm-rag/` | The graph reasoning engine: a fork of GFM-RAG / G-Reasoner (`RManLuo/gfm-rag` at commit `36cef5a`) carrying the SciGraphIR fusion model, the CCMP head and gate, the joint training objective and path interpretation. `gfm-rag/SCIGRAPHIR_CHANGES.md` lists exactly which files were added or modified. | Ch. 7 |
-| `probes/gen_probes.py` | One LLM call per query generating up to 8 short hypothetical answers: specific methods the problem would need, and hypothetical abstracts from other fields whose mechanism is analogous. These are the views of the multi-view semantic scorer. | Ch. 6 |
-| `eval/operator_scorer.py` | The handcrafted semantic scorer (dense + probe-sum + probe-max with a leave-one-out anti-hub denominator). It owns the encoder, query instruction and embedding cache that every other component reuses, and it warm-starts the learned scorer in `../experiments/eval/semantic_scorer.py`. | Ch. 6 |
-| `precompute/` | Caches the semantic branch's per-query inputs aligned to a graph's document order, so the fusion recomputes the semantic score live with learnable scalars and mines hard negatives from it. | Ch. 7 |
-| `researchbench/` | Builds the ResearchBench pooled corpus and its OpenAlex domain labels for the zero-shot transfer experiment. | Ch. 9 |
-| `tomato_star/` | Stages the TOMATO-Star benchmark into the corpus layout (resolution of inspiration domains, same / cross strata, the 7,000-document training subset). | Ch. 9 |
-| `train/` | The original TOMATO-Star training notebook; the notebook generators reuse its engine-install and model cells verbatim. | Ch. 9 |
-| `run_index.sh` | OpenIE entity-graph index with the stock engine (construction control). | Ch. 4 |
+| Hypothetical answers | [hypothetical_answers/](hypothetical_answers/README.md) | Generate separate semantic views of a research problem. |
+| Final semantic scorer | [semantic_scorer.py](../experiments/eval/semantic_scorer.py) | `SortedMLPScorer` and `MatchabilityPredictor`; select the `mlp` arm. |
+| Shared embeddings and earlier handcrafted scorer | [eval/](eval/README.md) | Encoder/cache helpers and the handcrafted comparison scorer. |
+| Graph-aligned semantic inputs | [precompute/](precompute/README.md) | Cache inputs in the document order expected by the graph. |
+| Fusion router and CCMP head | [fusion_reasoner.py](gfm-rag/gfmrag/models/fusion_reasoner.py) | Combine semantic and graph scores and predict node responsibilities. |
+| Training and CCMP targets | [fusion_trainer.py](gfm-rag/gfmrag/trainers/fusion_trainer.py) | Ranking objectives, hard negatives, continuation targets, and CCMP loss. |
+| Message propagation and gating | [ultra/models.py](gfm-rag/gfmrag/models/ultra/models.py) | QueryNBFNet and the gate applied to outgoing messages. |
 
-## Data layout (created at runtime, git-ignored)
+The [engine change map](gfm-rag/SCIGRAPHIR_CHANGES.md) separates SciGraphIR additions from
+the vendored GFM-RAG code. Its [upstream README](gfm-rag/README.md) describes the upstream
+project; use this guide and the change map for SciGraphIR.
 
-```
-retriever/data/<dataset>_<split>/raw/documents.json         {doc_id: "Title. Abstract"}
-retriever/data/<dataset>_<split>/raw/<split>.json           queries: id, question, supporting_documents, stratum
-retriever/data/<dataset>_<split>/processed/stage1/          OpenIE graph (run_index.sh)
-retriever/data/<dataset>_<split>_v16sc/processed/stage1/    SciAfford graph (sciafford/build_greasoner_dataset.py)
-retriever/data/<dataset>_<split>_hyb/processed/stage1/      merged graph (experiments/prep/build_hybrid_graph.py)
-retriever/probes/cache/<dataset>/probes_<split>.jsonl       hypothetical answers
-```
+## Supporting directories
 
-`<dataset>` is `tomato`, `sir4_cs`, `sir4_biology`, `sir4_physics`, `sir4_matsci`, `mir` or
-`researchbench`. `../scigraphir_paths.py` is the single resolver for these paths; every script
-takes `--dataset`.
+| Path | Role |
+|---|---|
+| [tomato_star/](tomato_star/README.md) | TOMATO-Star corpus preparation and labels. |
+| [researchbench/](researchbench/) | ResearchBench corpus preparation and labels, using the SIR-4 reference matcher. |
+| [train/](train/README.md) | Source notebook used by experiment generators. |
+| [run_index.sh](run_index.sh) | OpenIE component for the default graph; also used as a standalone control. |
+| `data/` | Runtime corpora and graphs; excluded from Git. |
 
-## Installing and running the engine
+SciAfford graph construction is in [sciafford/](../sciafford/README.md). Training runs,
+baselines, and evaluations are indexed under [experiments/](../experiments/README.md).
 
-```bash
-pip install -e retriever/gfm-rag      # needs torch and torch_geometric first
-```
+## Data flow and execution
 
-The Colab notebooks install it from `gfm-rag-adapted.zip` on Drive (cells 3a to 3c) and run
-training with `python -m gfmrag.workflow.sft_training --config-path config/gfm_reasoner
---config-name sft_training_fusion ...`. The per-arm switches (`CCMP=1`,
-`FUSION_OBJECTIVE=hardneg`, `HARDNEG_HUB`, `HARDNEG_RAND`, `PER_GOLD`, `ROUTE=astar|attn`) are
-environment variables read by `gfm-rag/gfmrag/trainers/fusion_trainer.py` and
-`gfm-rag/gfmrag/models/ultra/models.py`. The engine locates the semantic scorer through
-`SCIGRAPHIR_ROOT`, so set it before training.
+Corpora are stored at `data/<dataset>_<split>/raw/`. The default SciAfford graph uses
+`data/<dataset>_<split>_hyb/processed/stage1/`. The `_v16sc` directories contain the
+affordance component used to construct it and for component comparisons.
+[scigraphir_paths.py](../scigraphir_paths.py) retains component defaults for older callers;
+pass `suffix="hyb"` when resolving the default full-method graph.
+
+Install the engine using the [setup instructions](../docs/SETUP.md). Its training entry
+point is `python -m gfmrag.workflow.sft_training`; the base
+[fusion config](gfm-rag/gfmrag/workflow/config/gfm_reasoner/sft_training_fusion.yaml) is
+overridden by the [experiment notebooks](../experiments/notebooks/README.md).
+
+The base config defaults to the `handcrafted` scorer, and CCMP is activated by
+`CCMP=1`. A bare invocation therefore does not select the full thesis method. Full-method
+experiments also select `semantic=mlp`, provide its checkpoints and cached components, and
+configure the ranking objective. Start with the
+[default SIR-4 graph workflow](../experiments/notebooks/colab_sir4_hyb.ipynb) and follow
+its complete settings, including the `_hyb` graph names.

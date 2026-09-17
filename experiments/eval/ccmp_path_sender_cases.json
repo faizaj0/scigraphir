@@ -8,7 +8,7 @@
       "domain_distance": "disjoint",
       "field_pair": "Biochemistry, Genetics and Molecular Biology -> Computer Science",
       "gold_stratum": "cross",
-      "source": "benchmark/data/benchmark/biology_test_low/eval.json"
+      "source": "sir-4/data/benchmark/biology_test_low/eval.json"
     },
     "expected_8sep_bf16": {
       "note": "reproduction reference only; never an input to the measurement",
@@ -97,7 +97,7 @@
       "domain_distance": "disjoint",
       "field_pair": "Computer Science -> Psychology",
       "gold_stratum": "cross",
-      "source": "benchmark/data/benchmark/cs_test_final/eval.json"
+      "source": "sir-4/data/benchmark/cs_test_final/eval.json"
     },
     "expected_8sep_bf16": {
       "note": "reproduction reference only; never an input to the measurement",
@@ -192,7 +192,7 @@
       "domain_distance": "disjoint",
       "field_pair": "Computer Science -> Neuroscience",
       "gold_stratum": "cross",
-      "source": "benchmark/data/benchmark/cs_test_final/eval.json"
+      "source": "sir-4/data/benchmark/cs_test_final/eval.json"
     },
     "expected_8sep_bf16": {
       "note": "reproduction reference only; never an input to the measurement",
@@ -299,8 +299,8 @@
       "domain_distance": "overlap_1",
       "field_pair": "Computer Science -> Decision Sciences",
       "gold_stratum": "same",
-      "note": "query stratum is cross, but QUARTET's gold-level label is same (field confidence ambiguous); cite as a within-CS decision-theory example, not as cross-field",
-      "source": "benchmark/data/benchmark/cs_test_final/eval.json"
+      "note": "query stratum is cross, but SIR-4's gold-level label is same (field confidence ambiguous); cite as a within-CS decision-theory example, not as cross-field",
+      "source": "sir-4/data/benchmark/cs_test_final/eval.json"
     },
     "expected_8sep_bf16": {
       "note": "reproduction reference only; never an input to the measurement",

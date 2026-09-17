@@ -45,7 +45,7 @@ def fingerprint_inputs(cfg, src, cases):
                 or selection["graph"] != str(cfg.datasets.valid_names[0])):
             raise ValueError("Selected checkpoint/graph differs from workflow configuration")
         files.append(str(cfg.mechanism.selection))
-    for key in ("OPERATOR_COMPONENTS_TEST", "SEMANTIC_COMPONENTS_TEST", "SEMANTIC_CKPT", "SEMANTIC_POPNET"):
+    for key in ('HANDCRAFTED_COMPONENTS_TEST', "SEMANTIC_COMPONENTS_TEST", "SEMANTIC_CKPT", "SEMANTIC_POPNET"):
         p = os.environ.get(key)
         if p:
             files.append(p)

@@ -1,8 +1,8 @@
 # ===== Graph-reasoning routes for EVERY dataset with hops files on Drive (paste into any Colab kernel; needs Drive + the unpacked bundle) =====
-# Per dataset, line graphs: (a) P(graph rank <= 10) against the length of the top route, cross vs same, SciAffordGraph vs OpenIE entity graph;
+# Per dataset, line graphs: (a) P(graph rank <= 10) against the length of the top route, cross vs same, SciAfford graph vs OpenIE entity graph;
 # (b) the node type reached at each hop; (c) route weight and success against the largest sender degree on the route (hub inflation);
 # (d) the CCMP gate against the sender's degree. Reads outputs/scan/<dataset>/hops_frame_ccmp.json (+ hops_openie.json); degrees come from
-# the frame graph's processed/stage1/edges.csv in the unpacked bundle (the build whose targets carry "[domain]" nodes).
+# the SciAfford graph's processed/stage1/edges.csv in the unpacked bundle (the build whose targets carry "[domain]" nodes).
 import os, sys, glob, json, subprocess
 if not os.path.isdir("/content/drive/MyDrive"):
     from google.colab import drive; drive.mount("/content/drive")
@@ -16,18 +16,16 @@ Line graphs; no gold reasoning paths exist, so routes are characterised against 
 against the structure of the graph (node degree).
 
   (a) success against route length: P(graph rank <= 10 | length of the top route), cross- and same-field golds,
-      SciAffordGraph vs the OpenIE entity graph                             -> the reach of the reasoner is a distance effect
+      SciAfford graph vs the OpenIE entity graph                             -> the reach of the reasoner is a distance effect
   (b) anatomy of the route: the node type reached at each hop position (share of routes), cross-field golds
   (c) hub inflation: median weight of the top route and P(graph rank <= 10) against the largest sender degree on the route
   (d) the CCMP gate against the sender's degree (mean, 95% bootstrap CI): does credit go to specific senders or to hubs?
 
-Inputs: hops_frame_ccmp.json (+ hops_openie.json) from the showcase notebooks; --edges = the frame graph's
-processed/stage1/edges.csv (for degrees); QUARTET eval.json gives the per-gold stratum for SIR-4 (else the query stratum).
+Inputs: hops_frame_ccmp.json (+ hops_openie.json) from the showcase notebooks; --edges = the SciAfford graph's
+processed/stage1/edges.csv (for degrees); SIR-4 eval.json gives the per-gold stratum for SIR-4 (else the query stratum).
 Routes that do not start at a seed, do not chain, or revisit a node are decoding artefacts and are skipped.
 
-    python3 eval/graph_reasoning_fig.py --dir results/qualitative/drive_scan_sir4_cs --docs ../retriever/data/sir4_cs_test/raw/documents.json \
-        --edges ../retriever/data/sir4_cs_test_v16sc/processed/stage1/edges.csv \
-        --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_reasoning_cs
+    python3 eval/graph_reasoning_fig.py --dir results/qualitative/drive_scan_sir4_cs --docs ../retriever/data/sir4_cs_test/raw/documents.json         --edges ../retriever/data/sir4_cs_test_v16sc/processed/stage1/edges.csv         --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_reasoning_cs
 """
 import argparse, collections, csv, json, math, os, random
 
@@ -82,8 +80,8 @@ def style(ax):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--docs", required=True)
-    ap.add_argument("--edges", default=None, help="frame graph processed/stage1/edges.csv (degrees for panels c, d)")
-    ap.add_argument("--quartet", default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default=""); ap.add_argument("--max-hops", type=int, default=6); ap.add_argument("--k", type=int, default=10)
+    ap.add_argument("--edges", default=None, help='SciAfford graph processed/stage1/edges.csv (degrees for panels c, d)')
+    ap.add_argument("--sir4", "--sir4", dest='sir4', default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default=""); ap.add_argument("--max-hops", type=int, default=6); ap.add_argument("--k", type=int, default=10)
     a = ap.parse_args(); K = a.k
     docs = json.load(open(a.docs))
     F = load(f"{a.dir}/{a.prefix}frame_ccmp.json", a.max_hops)
@@ -93,12 +91,12 @@ def main():
         with open(a.edges) as f:
             for row in csv.DictReader(f): deg[row["source"]] += 1; deg[row["target"]] += 1
     unit = "query stratum (hops file)"
-    if a.quartet and os.path.exists(a.quartet):
+    if a.sir4 and os.path.exists(a.sir4):
         qz = {}
-        for x in json.load(open(a.quartet)):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], d)] = m.get("stratum")
         for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
-        unit = "gold stratum (QUARTET)"
+        unit = "gold stratum (SIR-4)"
     strata = [s for s in ("cross", "same") if any(v["stratum"] == s for v in F.values())] or ["all"]
     if strata == ["all"]:
         for v in F.values(): v["stratum"] = "all"
@@ -116,7 +114,7 @@ def main():
             ks = [k for k in keys[s] if F[k]["path"] and len(F[k]["path"]["hops"]) == h]
             ok = sum(F[k]["rank"]["graph"] <= K for k in ks); ns.append(len(ks))
             ys.append(ok / len(ks) if ks else float("nan")); l, u = wilson(ok, len(ks)); lo.append(l); hi.append(u)
-        ax.fill_between(hs, lo, hi, color=col, alpha=0.12, lw=0); ax.plot(hs, ys, marker="o", ms=4, lw=1.5, color=col, label=f"SciAffordGraph, {lab}")
+        ax.fill_between(hs, lo, hi, color=col, alpha=0.12, lw=0); ax.plot(hs, ys, marker="o", ms=4, lw=1.5, color=col, label=f"SciAfford graph, {lab}")
         for h, n, y in zip(hs, ns, ys):
             if n and s == s0: ax.text(h, -0.09, f"n={n}", fontsize=5.6, color=MUTED, ha="center")
         summary[f"a:{s}"] = {str(h): {"n": n, "p": y} for h, n, y in zip(hs, ns, ys)}
@@ -202,7 +200,7 @@ if __name__ == "__main__":
     main()
 ''')
 def frame_edges(ds):
-    """the frame-graph build for this dataset: an edges.csv whose second line has a typed '[...]' target"""
+    """the SciAfford graph build for this dataset: an edges.csv whose second line has a typed '[...]' target"""
     for p in sorted(glob.glob(f"{DATA}/{ds}_test*/processed/stage1/edges.csv")):
         with open(p) as f: f.readline(); ln = f.readline()
         if ",[" in ln: return p
@@ -216,8 +214,8 @@ for d in sorted(glob.glob(f"{SCAN}/*/")):
     cmd = [sys.executable, "/content/eval/graph_reasoning_fig.py", "--dir", d, "--docs", docs, "--out", f"{d}/fig_graph_reasoning_{ds}", "--title", ds]
     e = frame_edges(ds)
     if e: cmd += ["--edges", e]
-    else: print(ds, ": no frame-graph edges.csv found; panels (c) and (d) will be empty")
-    _qt = f"{_root}/benchmark/data.nosync/benchmark/{ds.replace('sir4_', '')}_test_final/eval.json"
-    if os.path.exists(_qt): cmd += ["--quartet", _qt]
+    else: print(ds, ': no SciAfford graph edges.csv found; panels (c) and (d) will be empty')
+    _qt = f"{_root}/sir-4/data/benchmark/{ds.replace('sir4_', '')}_test_final/eval.json"
+    if os.path.exists(_qt): cmd += ["--sir4", _qt]
     r = subprocess.run(cmd, capture_output=True, text=True); print("=" * 30, ds); print(r.stdout[-2500:], r.stderr[-1500:])
     if os.path.exists(f"{d}/fig_graph_reasoning_{ds}.png"): display(Image(f"{d}/fig_graph_reasoning_{ds}.png"))

@@ -3,7 +3,7 @@
 route_graph.py -- draw the local subgraph the reasoner used for one (query, gold) pair.
 
 All seed-origin routes recorded for the pair (gate on, plus gate-off-only routes dashed) are merged into one
-graph, laid out in layers from the query's seed frames (left) to the gold (right). Nodes are coloured by frame
+graph, laid out in layers from the query's seed nodes (left) to the gold (right). Nodes are coloured by affordance representation
 type; edges carry the relation, are coloured by the CCMP gate on the sender (orange > 1.05, blue < 0.95) and
 widened by the weight of the best path through them. The gold's remaining edges (not on any route) are shown in
 grey so the reader sees what else the paper touches; a domain node shows its degree.
@@ -124,7 +124,7 @@ def main():
     rk = t["rank"]; rko = off[1]["rank"] if off else {}
     ax.text(min(xs) - 1.9, max(ys) + 1.75, (a.title or f"{docs.get(g, g).split('. ')[0][:80]}") + f"\nquery: {queries.get(q, {}).get('question', '')[:150]}...", fontsize=8.5, va="top", weight="bold")
     ax.text(min(xs) - 1.9, min(ys) - 1.0,
-            f"seeds of the query: {len(seeds)} frames ({len({k[0] for k in E if k[0] in seeds})} on a route)   |   routes drawn: {len(P_on)} with CCMP, {sum(1 for p in P_off if key(p) not in on_keys)} gate-off only (dashed)   |   "
+            f"seeds of the query: {len(seeds)} affordance nodes ({len({k[0] for k in E if k[0] in seeds})} on a route)   |   routes drawn: {len(P_on)} with CCMP, {sum(1 for p in P_off if key(p) not in on_keys)} gate-off only (dashed)   |   "
             f"rank: cosine {rk.get('dense')}, scorer {rk.get('scorer')}, graph channel {rk.get('graph')} (gate off {rko.get('graph')}), SciGraphIR {rk.get('fused')} (gate off {rko.get('fused')})   |   "
             f"grey: the gold's other edges ({len(others)})", fontsize=7, va="top", color="#333333")
     for ext in ("png", "pdf"): fig.savefig(f"{a.out}.{ext}", dpi=170, bbox_inches="tight")

@@ -3,17 +3,14 @@
 plot_hops.py -- hop-count distribution of the reasoner's top path, GFM-RAG Figure 6 style.
 
 For every (query, gold) in an interpret_paths.py output, take the number of hops in the
-highest-weighted path from the query's seed frames to the gold (the prediction) and the
+highest-weighted path from the query's seed nodes to the gold (the prediction) and the
 fewest hops from any seed to the gold in the graph (`min_hops`, the structural reference:
 SIR-4 has no annotated reasoning chains, so the shortest seed-to-gold distance stands in
 for GFM-RAG's ground-truth hop count). One panel per stratum; one line per arm plus the
 dashed reference for each graph; MAE between each arm and its own graph's reference.
 
 usage:
-  plot_hops.py --arm "SciAffordGraph + CCMP=hops_frame_on.json:frame" \
-               --arm "SciAffordGraph, no CCMP=hops_frame_off.json:frame" \
-               --arm "OpenIE graph=hops_openie.json:openie" \
-               --out fig_hops_cs.pdf [--title "SIR-4 CS"] [--max-hops 6]
+  plot_hops.py --arm "SciAfford graph + CCMP=hops_frame_on.json:sciafford"                --arm "SciAfford graph, no CCMP=hops_frame_off.json:sciafford"                --arm "OpenIE graph=hops_openie.json:openie"                --out fig_hops_cs.pdf [--title "SIR-4 CS"] [--max-hops 6]
 
 Each --arm is  label=path[:graphkey]; arms sharing a graphkey share one reference line
 (their min_hops are identical because the graph is the same).
@@ -58,6 +55,7 @@ def main():
     for spec in a.arm:
         label, rest = spec.split("=", 1)
         path, _, gkey = rest.partition(":")
+        gkey = {"sciafford": "frame"}.get(gkey, gkey)
         arms.append((label, gkey or label, load(path)))
     strata = a.strata.split(",")
     stratum_label = {"same": "same-field", "cross": "cross-field", "all": "all"}

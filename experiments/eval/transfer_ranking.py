@@ -3,7 +3,7 @@
 # best thing to train on, nor whether any of them beat doing no training at all.
 # Both questions are answered here, from files already on Drive.
 #
-# The untrained arms (bm25/bge/qwen3/operator) do not transfer -- they score the
+# The untrained arms (bm25/bge/qwen3/handcrafted scorer) do not transfer -- they score the
 # same on a target regardless of source -- so they are not rows in the matrix.
 # They are the FLOOR every off-diagonal cell has to clear to have meant anything.
 import os, json
@@ -13,7 +13,7 @@ MET  = [("mrr", "MRR"), ("ndcg@5", "nDCG@5"), ("recall@3", "R@3"),
 HEAD = "ndcg@5"                       # the metric the ranking is sorted on
 MTX  = globals().get("OUT_M", f"{DRIVE}/outputs/_transfer_matrix")
 ARMC = f"{DRIVE}/outputs/_arm_comparison"
-BASE = [("bm25", "BM25"), ("bge", "BGE"), ("qwen3", "Qwen3"), ("operator", "Operator")]
+BASE = [("bm25", "BM25"), ("bge", "BGE"), ("qwen3", "Qwen3"), ('operator', 'Handcrafted semantic scorer')]
 SLICES = ("all", "cross")             # `all` is the headline, `cross` is the claim
 
 rl = []

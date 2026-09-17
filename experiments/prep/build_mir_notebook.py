@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 
 HEADER = '''# MIR — in-benchmark training and the cumulative ablation (Table 9.1 on MIR)
@@ -77,7 +77,7 @@ drive.mount('/content/drive')
 
 DRIVE    = "/content/drive/MyDrive/cargo-gfmrag"
 DATASET  = "mir"
-GRAPH    = "__GRAPH__"                           # frame: mir_*_v16sc (SciAfford) | openie: mir_* (entity+document)
+GRAPH    = "__GRAPH__"                           # affordance representation: mir_*_v16sc (SciAfford) | openie: mir_* (entity+document)
 TRAIN, TEST = ((f"{DATASET}_train_v16sc", f"{DATASET}_test_v16sc") if GRAPH == "frame"
                else (f"{DATASET}_train", f"{DATASET}_test"))
 BUNDLE   = f"{DRIVE}/{DATASET}_bundle.zip"
@@ -116,7 +116,7 @@ zipfile.ZipFile(BUNDLE).extractall(SCIGRAPHIR_ROOT); print("unpacked", os.path.b
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -134,7 +134,7 @@ QUERIES = f"{DATA_ROOT}/{DATASET}_test/raw/test.json"
 for s, g in (("train", TRAIN), ("test", TEST)):
     for label, p in ((f"corpus {s}", f"{cp.corpus_dir(s)}/raw/documents.json"),
                      (f"queries {s}", f"{cp.corpus_dir(s)}/raw/{s}.json"),
-                     (f"probes {s}", cp.probes_path(s)),
+                     (f"hypothetical answers {s}", cp.answers_path(s)),
                      (f"graph {s}", f"{DATA_ROOT}/{g}/processed/stage1/nodes.csv")):
         assert os.path.exists(p), f"missing {label}: {p}"
         print(f"  ok  {label:13} {p.replace(SCIGRAPHIR_ROOT, '<root>')}")
@@ -144,7 +144,7 @@ for s, g in (("train", TRAIN), ("test", TEST)):
     if os.path.abspath(_src) != os.path.abspath(_dst):
         os.makedirs(os.path.dirname(_dst), exist_ok=True); shutil.copy(_src, _dst)
     assert os.path.exists(_dst), _dst
-# Node types and seedless queries. The frame graph audits to zero seedless queries; the OpenIE
+# Node types and seedless queries. The SciAfford graph audits to zero seedless queries; the OpenIE
 # graph may drop a few (four on SIR-4 CS), and the loader drops them SILENTLY, so they are
 # recorded here and re-inserted as empty rankings before scoring (section 6).
 import csv, collections
@@ -221,7 +221,7 @@ for tag, pred in PRED.items():
     score(tag, pred, LABEL[tag])
 '''
 
-HELPERS = '''# 5a. Caches (graph-keyed) and the operator component tables.
+HELPERS = '''# 5a. Caches (graph-keyed) and the handcrafted scorer component tables.
 import numpy as np
 if os.path.isdir(f"{CACHE}/op_emb"):
     shutil.copytree(f"{CACHE}/op_emb", f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", dirs_exist_ok=True)
@@ -252,19 +252,19 @@ for s, g in (("train", TRAIN), ("test", TEST)):
         c = f"{CACHE}/{g}_operator_components{OP_SLUG}.npz"
         if os.path.exists(c): shutil.copy(c, opc(g))
         else:
-            sh(f"python3 -u precompute/precompute_operator_components.py "
+            sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                f"--dataset {DATASET} --graph {g} --split {s} --model {OP_MODEL}", KGDIR)
             shutil.copy(opc(g), c)
     zz = np.load(opc(g), allow_pickle=True)
     assert "qwen" in str(zz["encoder"]).lower(), f"{opc(g)} was built with {zz['encoder']!r}"
-    print(f"  {g:18} operator components dense {zz['dense'].shape}")
+    print(f"  {g:18} handcrafted scorer components dense {zz['dense'].shape}")
 shutil.copytree(f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", f"{CACHE}/op_emb", dirs_exist_ok=True)
 '''
 
 SCORER = '''# 5b. The multi-view scorer (5d recipe): sorted-MLP over the hypothetical-answer match profile
-# with a jointly trained popularity predictor, --loss fixed for the multi-gold objective.
+# with a jointly trained background matchability predictor, --loss fixed for the multi-gold objective.
 # Its test predictions ARE the "Multi-View Semantic Scorer" row; its weights warm-start the
-# fusion arms. `dense` (cosine only) and `current` (the handcrafted operator) come out of the
+# fusion arms. `dense` (cosine only) and `current` (the handcrafted scorer) come out of the
 # same run for free and are scored as extra reference rows.
 SEM = f"{S4}/results/semantic_{DATASET}"
 SEM_DRIVE = f"{OUT_ROOT}/semantic"
@@ -286,12 +286,12 @@ _st = json.load(open(SEM_CKPT))
 print(f"scorer: jmax={_st['jmax']} beta={_st['beta']:.4f} hidden={len(_st['net']['0.weight'])}")
 
 SEM_PRED = {"scorer":   f"{SEM}/predictions_semantic_mlp_fixedloss_{DATASET}_test.json",
-            "operator": f"{SEM}/predictions_semantic_current_fixedloss_{DATASET}_test.json",
+            "handcrafted scorer": f"{SEM}/predictions_semantic_current_fixedloss_{DATASET}_test.json",
             "dense":    f"{SEM}/predictions_semantic_dense_{DATASET}_test.json"}
 for k, p in SEM_PRED.items():
     assert os.path.exists(p), f"missing {p}"
 score("scigraphir_scorer", SEM_PRED["scorer"], "Multi-View Semantic Scorer")
-score("ref_operator", SEM_PRED["operator"], "operator scorer (reference)")
+score("ref_handcrafted", SEM_PRED["handcrafted scorer"], "handcrafted scorer scorer (reference)")
 score("ref_dense", SEM_PRED["dense"], "Qwen3 cosine, no views (reference)")
 
 # scorer components aligned to each graph's document order
@@ -307,7 +307,7 @@ TRAIN_ARMS = '''# 6. The two fusion arms, trained in-benchmark. "+ Graph Reasone
 # fused with the graph reasoner, no CCMP. "+ CCMP" adds the responsibility head with the
 # Table 9.1 settings. Predictions come out of the training run's final predict pass.
 BASE_ENV = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                OPERATOR_COMPONENTS=opc(TRAIN), OPERATOR_COMPONENTS_TEST=opc(TEST),
+                HANDCRAFTED_COMPONENTS=opc(TRAIN), HANDCRAFTED_COMPONENTS_TEST=opc(TEST),
                 SEMANTIC_COMPONENTS=semc(TRAIN), SEMANTIC_COMPONENTS_TEST=semc(TEST),
                 SEMANTIC_CKPT=SEM_CKPT, SEMANTIC_POPNET=SEM_POP, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -335,7 +335,7 @@ def train_cmd(run_dir, epochs, max_steps=None):
 if GRAPH == "openie":
     # ONE arm: the "+ Graph Reasoner" rung on the OpenIE graph, no CCMP, matching the SIR-4
     # OpenIE row (colab_sir4_openie_ablation.ipynb). The run name carries `openie` so it never
-    # collides with the frame-graph runs on Drive; the scorer warm start is shared (graph-free).
+    # collides with the SciAfford graph runs on Drive; the scorer warm start is shared (graph-free).
     ARMS_FUSION = [("scigraphir_openie_graph", f"{DATASET}_openie_qwenmlp_graph_e{EPOCHS}_b{BATCH}",
                     "+ Graph Reasoner (OpenIE graph)", {})]
 else:
@@ -406,7 +406,7 @@ ORDER = [(r"\\textit{Sparse lexical}", [("bm25", "BM25")]),
            ("scigraphir_openie_graph", "+ Graph Reasoner (OpenIE graph)"),
            ("scigraphir_graph", "+ Graph Reasoner (SciAfford graph)"),
            ("scigraphir_ccmp", "+ CCMP (full SciGraphIR)")]),
-         (r"\\textit{Reference: scorer inputs}", [("ref_dense", "Qwen3 cosine, no hypothetical answers"), ("ref_operator", "operator scorer (4 scalars)")])]
+         (r"\\textit{Reference: scorer inputs}", [("ref_dense", "Qwen3 cosine, no hypothetical answers"), ('ref_handcrafted', 'handcrafted scorer scorer (4 scalars)')])]
 MET = [("recall@3", "R@3"), ("recall@5", "R@5"), ("ndcg@5", "nDCG@5"), ("map", "mAP")]
 lines = []
 def out(s=""): print(s); lines.append(s)
@@ -433,7 +433,7 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=2)
     ap.add_argument("--ccmp", default="standard", choices=["standard", "residual"])
     ap.add_argument("--graph", default="frame", choices=["frame", "openie"],
-                    help="frame = mir_*_v16sc (SciAfford graph, both fusion arms); openie = mir_* "
+                    help='affordance representation = mir_*_v16sc (SciAfford graph, both fusion arms); openie = mir_* '
                          "(entity+document OpenIE graph from retriever/run_index.sh, one arm: "
                          "'+ Graph Reasoner (OpenIE graph)', no CCMP, as on SIR-4)")
     ap.add_argument("--out", default=None)
@@ -445,7 +445,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values())
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -457,7 +457,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
     assert '"map":' in overlay["experiments/eval/score_sir4.py"], "score_sir4.py has no mAP; the table needs it"
     arms_src = "".join(base[rb.ARMS_CELL]["source"])

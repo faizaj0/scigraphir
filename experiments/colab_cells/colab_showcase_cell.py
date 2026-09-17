@@ -78,7 +78,7 @@ _run("qwen3",  _pick(lambda s: s.startswith("import os, shutil") and "qwen3" in 
 _run("engine", _pick(lambda s: s.startswith("import os, sys, torch") and "gfm-rag-adapted.zip" in s))
 _pins = [s for s in _code if '_im.version("wandb")' in s or 'wandb.__version__.startswith("0.18.")' in s]
 if _pins: _run("pins", _pins[0], fatal=False)
-_run("fusion sources", _pick(lambda s: s.startswith("# === write the CARGO-fusion files")))
+_run("fusion sources", _pick(lambda s: s.startswith("# === write the SciGraphIR-fusion files")))
 # The notebook's blob may predate the current engine (an old interpret() has no do_paths, so a "scan"
 # silently runs the slow path search). gfm_overlay.zip on Drive carries the current fusion sources.
 import zipfile as _zf
@@ -103,7 +103,7 @@ interpret_paths.py -- path interpretations for a trained fusion checkpoint.
 
 Same construction as sft_training (config, datasets, model, trainer) with no training: the
 checkpoint is loaded, then FusionSFTTrainer.interpret() runs the NBFNet-style gradient beam
-search from each requested query's seed frames to its best-ranked gold and records the CCMP
+search from each requested query's seed nodes to its best-ranked gold and records the CCMP
 responsibility along every path. Output: one JSON.
 
     python -m gfmrag.workflow.interpret_paths --config-path config/gfm_reasoner \\
@@ -111,7 +111,7 @@ responsibility along every path. Output: one JSON.
         datasets.cfgs.root=... datasets.train_names=[G] datasets.valid_names=[G] \\
         model.semantic=mlp model.cqig=false \\
         +interp.ckpt=/path/model_best.pth +interp.qids_file=/path/qids.json \\
-        +interp.out=/path/paths.json +interp.probes=/path/probes_test.jsonl \\
+        +interp.out=/path/paths.json +interp.answers=/path/probes_test.jsonl \\
         hydra.run.dir=/path/run
 """
 try:  # same torchvision shim as sft_training
@@ -169,7 +169,7 @@ def main(cfg: DictConfig) -> None:
                           eval_graph_dataset_loader=valid_loader)
     qids = json.load(open(cfg.interp.qids_file))
     golds = json.load(open(cfg.interp.golds_file)) if cfg.interp.get("golds_file") else None
-    kw = dict(probes_path=cfg.interp.get("probes"),
+    kw = dict(answers_path=cfg.interp.get("answers", cfg.interp.get("probes")),
               num_beam=int(cfg.interp.get("num_beam", 10)), path_topk=int(cfg.interp.get("path_topk", 5)),
               max_golds=int(cfg.interp.get("max_golds", 2)), top_views=int(cfg.interp.get("top_views", 3)),
               do_paths=bool(int(cfg.interp.get("paths", 1))), golds=golds,
@@ -207,10 +207,10 @@ for g in GRAPHS:
     dst = f"{DATA_ROOT}/{g}/raw/documents.json"
     if not os.path.exists(dst):
         os.makedirs(os.path.dirname(dst), exist_ok=True); shutil.copy(f"{DATA_ROOT}/{DATASET}_test/raw/documents.json", dst)
-PROBES = None
-try: PROBES = cp.probes_path("test")
+ANSWERS = None
+try: ANSWERS = cp.answers_path("test")
 except Exception: pass
-if not (PROBES and os.path.exists(PROBES)): PROBES = None
+if not (ANSWERS and os.path.exists(ANSWERS)): ANSWERS = None
 SCAN_OUT = f"{DRIVE}/outputs/scan/{DATASET}"; os.makedirs(SCAN_OUT, exist_ok=True)
 ARMS = []
 for name, rel, gkey, skey, gate in S["arms"]:
@@ -223,7 +223,7 @@ for name, rel, gkey, skey, gate in S["arms"]:
 assert ARMS, "no checkpoint found for any arm"
 print("test queries", len(json.load(open(QUERIES))), "| graphs", GRAPHS, "| writes", os.path.relpath(SCAN_OUT, DRIVE))
 
-# --- component tables for the test graphs (operator + scorer views) and the scorer files -----------
+# --- component tables for the test graphs (handcrafted scorer + scorer views) and the scorer files -----------
 import numpy as np, fnmatch, torch
 def copy_new(src, dst, pattern="*"):
     if not os.path.isdir(src): return 0
@@ -272,7 +272,7 @@ for g in GRAPHS:
         c = f"{CACHE}/{g}_operator_components{OP_SLUG}.npz"
         if os.path.exists(c): shutil.copy(c, opc(g))
         else:
-            sh(f"python3 -u precompute/precompute_operator_components.py "
+            sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                f"--dataset {DATASET} --graph {g} --split test --model {OP_MODEL}", KGDIR)
             shutil.copy(opc(g), c)
     if not _sem_ok(semc(g)):      # the H memmap never survives a runtime reset; seconds to rebuild for a test split
@@ -294,7 +294,7 @@ def model_env(ckpt, graph, skey, gate=None):
     st = json.load(open(sem_ckpt))
     assert int(st["jmax"]) == info["jmax"], f"scorer width mismatch: ckpt jmax={info['jmax']} vs scorer '{skey}' jmax={st['jmax']}"
     env_ = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                OPERATOR_COMPONENTS=opc(graph), OPERATOR_COMPONENTS_TEST=opc(graph),
+                HANDCRAFTED_COMPONENTS=opc(graph), HANDCRAFTED_COMPONENTS_TEST=opc(graph),
                 SEMANTIC_COMPONENTS=semc(graph), SEMANTIC_COMPONENTS_TEST=semc(graph),
                 SEMANTIC_CKPT=sem_ckpt, SEMANTIC_POPNET=sem_pop, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -327,7 +327,7 @@ def scan_all(name, ckpt, graph, skey, gate=None):
     rl = f"{RUNS}/scan_all_{name}"; os.makedirs(rl, exist_ok=True)
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
             f"+interp.ckpt={ckpt} +interp.qids_file={QIDS_FILE} +interp.out={out} " +
-            (f"+interp.probes={PROBES} " if PROBES else "") +
+            (f"+interp.answers={ANSWERS} " if ANSWERS else "") +
             f"+interp.paths=0 +interp.max_golds=8 +interp.top_views=1 hydra.run.dir={rl}",
             "/content/gfm-rag", extra=env_, log=f"{rl}/console.log", check=False)
     assert rc == 0 and os.path.exists(out), f"{name} failed (exit {rc}); read {rl}/console.log"
@@ -344,8 +344,8 @@ T = {k: {(r["id"], t["doc"]): t["rank"] for r in json.load(open(v)) for t in r["
 common = sorted(set.intersection(*[set(T[k]) for k in T]))
 n_docs = len(json.load(open(f"{DATA_ROOT}/{DATASET}_test/raw/documents.json")))
 CH = ["graph", "scorer", "dense", "fused"]
-LAB = {"frame_ccmp": "frame graph + CCMP", "frame_ccmp_off": "frame graph, CCMP gate off (same weights)",
-       "frame_nocc": "frame graph, no CCMP (own run)", "openie": "OpenIE entity graph",
+LAB = {"frame_ccmp": 'SciAfford graph + CCMP', "frame_ccmp_off": 'SciAfford graph, CCMP gate off (same weights)',
+       "frame_nocc": 'SciAfford graph, no CCMP (own run)', "openie": "OpenIE entity graph",
        "hyb_nocc": "merged graph, no CCMP", "hyb_ccmp": "merged graph + CCMP", "hyb_ccmp_off": "merged graph, CCMP gate off (same weights)"}
 lines = []
 def out(s=""): print(s); lines.append(s)
@@ -366,10 +366,10 @@ for st in strata:
             out(f"| {LAB.get(arm, arm)} | {ch} | {np.nanmedian(v):.0f} | {100*np.nanmean(v<=5):.1f} | {100*np.nanmean(v<=10):.1f} | "
                 f"{100*np.nanmean(v<=50):.1f} | {100*np.nanmean(v<=100):.1f} |")
     out("\nGold-by-gold, graph channel (rank lower is better):")
-    for a, b, lab in (("frame_ccmp", "openie", "frame + CCMP vs OpenIE"), ("frame_nocc", "openie", "frame no-CCMP vs OpenIE"),
+    for a, b, lab in (("frame_ccmp", "openie", 'affordance representation + CCMP vs OpenIE'), ("frame_nocc", "openie", 'affordance representation no-CCMP vs OpenIE'),
                       ("frame_ccmp", "frame_ccmp_off", "CCMP gate on vs off (same weights)"), ("frame_ccmp", "frame_nocc", "CCMP run vs no-CCMP run"),
-                      ("hyb_nocc", "frame_nocc", "merged graph vs frame graph (no CCMP)"), ("hyb_nocc", "openie", "merged graph vs OpenIE (no CCMP)"),
-                      ("hyb_ccmp", "frame_ccmp", "merged + CCMP vs frame + CCMP"), ("hyb_ccmp", "hyb_nocc", "merged: CCMP run vs no-CCMP run")):
+                      ("hyb_nocc", "frame_nocc", 'merged graph vs SciAfford graph (no CCMP)'), ("hyb_nocc", "openie", "merged graph vs OpenIE (no CCMP)"),
+                      ("hyb_ccmp", "frame_ccmp", 'merged + CCMP vs affordance representation + CCMP'), ("hyb_ccmp", "hyb_nocc", "merged: CCMP run vs no-CCMP run")):
         if (st, a, "graph") in res and (st, b, "graph") in res:
             x, y = res[(st, a, "graph")], res[(st, b, "graph")]
             out(f"- {lab}: first better {100*np.mean(x<y):.0f}%  tie {100*np.mean(x==y):.0f}%  second better {100*np.mean(x>y):.0f}%")
@@ -391,7 +391,7 @@ print("\nwrote", os.path.relpath(f"{SCAN_OUT}/graph_channel_scan_{DATASET}.md", 
 # Runs the gradient beam search (paths=1) for a random query sample (the unbiased hop figure) plus every
 # candidate gold the scan flagged (pinned), under each arm, then eval/showcase.py ranks the candidates a reader would
 # call amazing: cosine buries the gold, the graph channel or the full model recovers it, and the top
-# route passes a function / limitation / method frame rather than a domain hub.
+# route passes a function / limitation / method affordance representation rather than a domain hub.
 import random
 SAMPLE_CROSS, SAMPLE_SAME = 80, 80   # random queries interpreted for the hop figure (unbiased); candidates are added on top
 TOP, N_TEX = 30, 4                   # candidates listed in the markdown / examples in the LaTeX table
@@ -425,7 +425,7 @@ def paths_all(name, ckpt, graph, skey, gate=None):
     rl = f"{RUNS}/hops_{name}"; os.makedirs(rl, exist_ok=True)
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
             f"+interp.ckpt={ckpt} +interp.qids_file={PQ_FILE} +interp.out={out} " +
-            (f"+interp.probes={PROBES} " if PROBES else "") +
+            (f"+interp.answers={ANSWERS} " if ANSWERS else "") +
             f"+interp.paths=1 +interp.golds_file={GOLDS_FILE} +interp.max_golds=4 +interp.top_views=3 "
             f"+interp.num_beam=6 +interp.path_topk=3 hydra.run.dir={rl}",
             "/content/gfm-rag", extra=env_, log=f"{rl}/console.log", check=False)
@@ -442,11 +442,11 @@ open(f"{S4}/eval/showcase.py", "w").write(r"""#!/usr/bin/env python3
 showcase.py -- find the worked examples that show cross-domain reasoning, and draw the hop figure.
 
 Reads interpret_paths.py outputs with paths (one file per arm; the FIRST --arm is the model being
-showcased, normally the frame graph + CCMP) and produces, for one dataset:
+showcased, normally the SciAfford graph + CCMP) and produces, for one dataset:
 
   <out>.md               candidates ranked for a reader: cross-field golds the dense retrievers bury
                          that the full model ranks at the top, with a readable multi-hop route through
-                         a mechanism frame (function / limitation / method), not a domain hub. Per
+                         a mechanism affordance representation (function / limitation / method), not a domain hub. Per
                          candidate: the query, the gold and its field, every rank, the top routes on
                          every graph with the CCMP gate per hop.
   <out>.tex              the top --n-tex candidates in the GFM-RAG Table 4 layout (query / inspiration /
@@ -464,9 +464,9 @@ showcased, normally the frame graph + CCMP) and produces, for one dataset:
 usage (one dataset):
   showcase.py --dataset sir4_cs --queries raw/test.json --docs raw/documents.json \\
       --edges processed/stage1/edges.csv \\
-      --arm "SciGraphIR (frame graph + CCMP)=hops_frame_ccmp.json" \\
-      --arm "frame graph, CCMP gate off=hops_frame_ccmp_off.json" --arm "OpenIE graph=hops_openie.json" \\
-      [--pred qwen3=predictions_qwen3_sir4_cs_test.json --pred bge=...] [--quartet eval.json] \\
+      --arm "SciGraphIR (SciAfford graph + CCMP)=hops_frame_ccmp.json" \\
+      --arm "SciAfford graph, CCMP gate off=hops_frame_ccmp_off.json" --arm "OpenIE graph=hops_openie.json" \\
+      [--pred qwen3=predictions_qwen3_sir4_cs_test.json --pred bge=...] [--sir4 eval.json] \\
       --out results/qualitative/showcase_sir4_cs --top 30 --n-tex 4
 '''
 from __future__ import annotations
@@ -480,7 +480,7 @@ import statistics as st
 from collections import Counter, defaultdict
 
 BIG = 10 ** 6
-MECH = ("function", "limitation", "method", "finding")     # frame types that carry a mechanism
+MECH = ("function", "limitation", "method", "finding")     # affordance representation types that carry a mechanism
 SYS_LABEL = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Emb.", "specter2": "SPECTER2", "scincl": "SciNCL",
              "reasonir": "ReasonIR-8B", "dense": "Qwen3 cosine", "scorer": "multi-view scorer", "graph": "graph channel",
              "fused": "SciGraphIR"}
@@ -568,7 +568,7 @@ def load_arm(path: str) -> dict:
 
 
 def doc_domains(edges_csv: str | None) -> dict:
-    '''document id -> '[domain] ...' node names from the frame graph's in_field edges.'''
+    '''document id -> '[domain] ...' node names from the SciAfford graph's in_field edges.'''
     dom = defaultdict(list)
     if not edges_csv or not os.path.exists(edges_csv):
         return dom
@@ -580,8 +580,8 @@ def doc_domains(edges_csv: str | None) -> dict:
     return dom
 
 
-def quartet_fields(path: str | None) -> dict:
-    '''(qid, gold) -> 'Computer Science -> Engineering' from the QUARTET export, when available.'''
+def sir4_fields(path: str | None) -> dict:
+    '''(qid, gold) -> 'Computer Science -> Engineering' from the SIR-4 export, when available.'''
     out = {}
     if not path or not os.path.exists(path):
         return out
@@ -593,7 +593,7 @@ def quartet_fields(path: str | None) -> dict:
 
 
 def route_kind(p: dict | None, docs: dict) -> str:
-    '''bridge = passes a mechanism frame; hub = only papers/domain/task/entity nodes; none = no valid path.'''
+    '''bridge = passes a mechanism affordance representation; hub = only papers/domain/task/entity nodes; none = no valid path.'''
     if not p:
         return "none"
     inner = [ntype(h["head"], docs) for h in p["hops"][1:]] + [ntype(p["hops"][0]["head"], docs)]
@@ -699,7 +699,7 @@ def main() -> int:
     ap.add_argument("--queries"); ap.add_argument("--docs"); ap.add_argument("--edges", default=None)
     ap.add_argument("--arm", action="append", default=[], help="label=hops json; the first is the showcased model")
     ap.add_argument("--pred", action="append", default=[], help="name=predictions json of a baseline (rank of the gold)")
-    ap.add_argument("--quartet", default=None, help="QUARTET eval.json for the field pair of each gold (SIR-4 only)")
+    ap.add_argument("--sir4", "--sir4", dest='sir4', default=None, help="SIR-4 eval.json for the field pair of each gold (SIR-4 only)")
     ap.add_argument("--stratum", default="auto", help="cross | same | any | auto (cross when the dataset has it)")
     ap.add_argument("--max-fused", type=int, default=25); ap.add_argument("--max-graph", type=int, default=5)
     ap.add_argument("--min-dense", type=int, default=25, help="the gold must be at least this deep under raw cosine")
@@ -737,14 +737,14 @@ def main() -> int:
         if os.path.exists(path):
             preds[nm] = {r["id"]: ranked_docs(r) for r in json.load(open(path))}
     dom = doc_domains(a.edges)
-    qf = quartet_fields(a.quartet)
+    qf = sir4_fields(a.sir4)
     strata_present = {t["stratum"] for t in main_tab.values()}
     stratum = a.stratum if a.stratum != "auto" else ("cross" if "cross" in strata_present else "any")
 
     # ---- candidates ------------------------------------------------------------------------------
     cands = []
     for (qid, gold), t in main_tab.items():
-        # a "cross" query can carry same-field golds too; use the gold's own label when QUARTET has it
+        # a "cross" query can carry same-field golds too; use the gold's own label when SIR-4 has it
         g_strat = (qf.get((qid, gold)) or {}).get("stratum") or t["stratum"]
         if stratum != "any" and g_strat != stratum:
             continue
@@ -789,7 +789,7 @@ def main() -> int:
           f"(graph <= {a.max_graph} or fused <= {a.max_fused}); tier A = model top-10, B = graph top-5 only, C = rest)", "",
           f"{len(main_tab)} golds with interpretations under '{main_lab}'; {len(cands)} pass the filter; "
           f"routes: {Counter(r['route'] for r in cands)}", "",
-          "Read the top rows first. 'bridge' = the top route passes a function / limitation / method / finding frame; "
+          "Read the top rows first. 'bridge' = the top route passes a function / limitation / method / finding affordance representation; "
           "'hub' = it only passes papers and a domain node (the failure signature); gates > 1 are hops CCMP amplified.", ""]
     # the extra columns (other arms, then baselines) are built as one list: with no baseline predictions
     # on disk, joining two groups with " | " left a stray empty column and a malformed markdown table
@@ -864,7 +864,7 @@ def main() -> int:
         tex[-1] = tex[-1][: -len("\n\\midrule")]
     tex.append("\\bottomrule\n\\end{tabular}")
     tex.append(f"\\caption{{Path interpretations on {tex_escape(a.dataset)}: cross-field queries whose gold inspiration the dense "
-               "retrievers bury and SciGraphIR ranks at the top. Paths are the highest-weighted routes from a query seed frame to "
+               'retrievers bury and SciGraphIR ranks at the top. Paths are the highest-weighted routes from a query seed node to '
                "the gold under each graph (gradient beam search over per-layer edge weights, as in NBFNet and GFM-RAG); numbers in "
                "parentheses are the CCMP gate on each hop's sender (1 = frontier mean; $>$1 amplified). Ranks are the position of "
                "the gold under each channel and system.}")
@@ -899,8 +899,8 @@ if __name__ == "__main__":
     raise SystemExit(main())
 """)
 print("eval/showcase.py written from this notebook, built 2026-09-08 17:41")
-ARM_LABEL = {"frame_ccmp": "SciGraphIR (frame graph + CCMP)", "frame_ccmp_off": "frame graph, CCMP gate off",
-             "frame_nocc": "frame graph, no CCMP", "openie": "OpenIE graph"}
+ARM_LABEL = {"frame_ccmp": 'SciGraphIR (SciAfford graph + CCMP)', "frame_ccmp_off": 'SciAfford graph, CCMP gate off',
+             "frame_nocc": 'SciAfford graph, no CCMP', "openie": "OpenIE graph"}
 BASE = f"{DRIVE}/outputs/baselines/{DATASET}"
 SHOW = f"{SCAN_OUT}/showcase_{DATASET}"
 cmd = [sys.executable, "-u", "eval/showcase.py", "--dataset", DATASET, "--queries", QUERIES,

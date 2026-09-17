@@ -4,15 +4,15 @@ plot_faithfulness.py -- three-panel figure on the reasoner's paths, from interpr
 outputs produced with +interp.necessity=1 +interp.distractor=1:
 
   (a) route composition: share of top paths (same-field vs cross-field golds) that pass through
-      each frame type on the SciAffordGraph, and the mean path length; OpenIE routes are untyped
+      each affordance representation type on the SciAfford graph, and the mean path length; OpenIE routes are untyped
       entity chains and are reported in the printed table.
   (b) path necessity: the gold's graph-channel rank before and after removing the edges of its
-      top-1 / top-3 paths, against removing the same number of random edges (frame vs OpenIE).
+      top-1 / top-3 paths, against removing the same number of random edges (affordance representation vs OpenIE).
   (c) CCMP selectivity: the gate applied on hops of paths to the gold vs hops of paths to the
       query's top-ranked wrong document (same model, same queries).
 
 usage:
-  plot_faithfulness.py --frame hops_frame_on.json [--frame-off hops_frame_off.json]
+  plot_faithfulness.py --sciafford hops_frame_on.json [--sciafford-off hops_frame_off.json]
                        --openie hops_openie.json --docs documents.json --out fig_faith_cs.pdf
 """
 import argparse, json, os, re
@@ -60,7 +60,7 @@ def rows_of(recs):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frame", required=True); ap.add_argument("--frame-off", default=None)
+    ap.add_argument("--sciafford", "--frame", dest="frame", required=True); ap.add_argument("--sciafford-off", "--frame-off", dest="frame_off", default=None)
     ap.add_argument("--openie", required=True); ap.add_argument("--docs", required=True)
     ap.add_argument("--out", required=True); ap.add_argument("--title", default="")
     a = ap.parse_args(argv)
@@ -94,7 +94,7 @@ def main(argv=None):
 
     # ---------- (b) necessity
     nec = {}
-    for name, recs in (("SciAffordGraph", F), ("OpenIE graph", O)):
+    for name, recs in (("SciAfford graph", F), ("OpenIE graph", O)):
         before, top1, top3, rnd, keep5 = [], [], [], [], Counter()
         for r, st, t in rows_of(recs):
             n = t.get("necessity")
@@ -141,15 +141,15 @@ def main(argv=None):
         vals = [100 * summary["composition"][st][c] for c in CATS]
         ax.bar(x + (i - 0.5) * w, vals, w, color=col, label=f"{'same-field' if st == 'same' else 'cross-field'} golds (n={n_paths[st]})")
     ax.set_xticks(x); ax.set_xticklabels(CATS, rotation=25, ha="right", fontsize=8)
-    ax.set_ylabel("% of top paths passing through"); ax.set_title("(a) what the SciAffordGraph routes go through", fontsize=9.5)
+    ax.set_ylabel("% of top paths passing through"); ax.set_title("(a) what the SciAfford graph routes go through", fontsize=9.5)
     ax.legend(fontsize=7.5, frameon=False, loc="upper right"); ax.grid(True, axis="y", ls="--", alpha=0.4)
     mh = summary["mean_hops"]
-    ax.set_xlabel("mean hops, frame graph: " + ", ".join(f"{st} {mh.get(f'frame/{st}', float('nan')):.2f}" for st in ("same", "cross"))
+    ax.set_xlabel('mean hops, SciAfford graph: ' + ", ".join(f"{st} {mh.get(f'frame/{st}', float('nan')):.2f}" for st in ("same", "cross"))
                   + ";  OpenIE graph: " + ", ".join(f"{st} {mh.get(f'openie/{st}', float('nan')):.2f}" for st in ("same", "cross")), fontsize=7.5)
 
     ax = axes[1]; keys = ["before", "top1", "top3", "random"]; labels = ["as is", "top-1 path\nremoved", "top-3 paths\nremoved", "same # random\nedges removed"]
     x = np.arange(len(keys)); w = 0.38
-    for i, (name, col) in enumerate((("SciAffordGraph", "#1f77b4"), ("OpenIE graph", "#ff7f0e"))):
+    for i, (name, col) in enumerate((("SciAfford graph", "#1f77b4"), ("OpenIE graph", "#ff7f0e"))):
         if name not in nec: continue
         vals = [nec[name]["median"][k] for k in keys]
         ax.bar(x + (i - 0.5) * w, vals, w, color=col, label=f"{name} (n={nec[name]['n']})")

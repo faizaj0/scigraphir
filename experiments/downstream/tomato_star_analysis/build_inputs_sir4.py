@@ -63,19 +63,19 @@ from analysis.downstream._common import DATASET, INPUTS_PATH, read_jsonl
 if DATASET != "sir4":
     raise SystemExit("build_inputs_sir4 must run with DOWNSTREAM_DATASET=sir4")
 
-CARGO = Path(os.environ["SCIGRAPHIR_ROOT"])   # this repository; the package runs from the TOMATO-Star checkout
-S4 = CARGO / "experiments"
+REPO_ROOT = Path(os.environ["SCIGRAPHIR_ROOT"])   # this repository; the package runs from the TOMATO-Star checkout
+S4 = REPO_ROOT / "experiments"
 sys.path.insert(0, str(S4 / "llm_baselines"))
 import sir4_llm_data as S  # noqa: E402  (queries, corpus, subset conventions)
 
 FIELDS = ["cs", "biology", "physics", "matsci"]
 FIELD_NAME = {"cs": "Computer Science", "biology": "Biology",
               "physics": "Physics", "matsci": "Materials Science"}
-# QUARTET stage-4 (resolved) files: the research question, background survey,
+# SIR-4 stage-4 (resolved) files: the research question, background survey,
 # fine-grained hypothesis, the primary inspiration list with per-inspiration
 # deltas, and the uniqueness sweep's alternative sets (uniqueness.M).
-QUARTET_DIR = CARGO / "benchmark" / "data" / "04_resolved"
-QUARTET_FILE = {"cs": "cs_test_final", "biology": "biology_test_low",
+QUARTET_DIR = REPO_ROOT / "sir-4" / "data" / "04_resolved"
+SIR4_FILE = {"cs": "cs_test_final", "biology": "biology_test_low",
                 "physics": "physics_test_low", "matsci": "matsci_test_low"}
 SUBSET = str(S4 / "llm_baselines" / "subsets" / "subset_{field}_same250_allcross_seed42.json")
 
@@ -89,7 +89,7 @@ DEFAULT_ARM_PATHS = {
 PREV_HYPOTHESIS = "No previous hypothesis."
 
 
-# --- identifiers (copied from benchmark/build/05_export.py so ids match the corpus) ---
+# --- identifiers (copied from sir-4/build/05_export.py so ids match the corpus) ---
 def _norm(s) -> str:
     s = unicodedata.normalize("NFKD", str(s or "").lower())
     s = "".join(c for c in s if not unicodedata.combining(c))
@@ -109,7 +109,7 @@ def doc_id(x: dict) -> str | None:
 # --- rankings --------------------------------------------------------------
 def load_rankings(path: Path) -> dict[str, list[str]]:
     """Accepted formats (auto-detected), keys lower-cased:
-      A. CARGO prediction list [{id, predictions:{document:[[key,score],...]}}] (score desc)
+      A. SciGraphIR prediction list [{id, predictions:{document:[[key,score],...]}}] (score desc)
       B. ranked dict {query_id: [key, ...]}  (MOOSE-Chem / LATTICE rankings.json)"""
     d = json.load(open(path))
     if isinstance(d, dict):
@@ -141,7 +141,7 @@ def build_base(field: str, reference: str):
     ids, strata = man["query_ids"], man["strata"]
     want = set(ids)
     recs = {}
-    with open(QUARTET_DIR / f"{QUARTET_FILE[field]}.jsonl") as fh:
+    with open(QUARTET_DIR / f"{SIR4_FILE[field]}.jsonl") as fh:
         for line in fh:
             r = json.loads(line)
             qid = r["doi"].replace("/", "_")
@@ -150,14 +150,14 @@ def build_base(field: str, reference: str):
     missing_recs = [q for q in ids if q not in recs]
     if missing_recs:
         raise SystemExit(f"{field}: {len(missing_recs)} subset queries missing from "
-                         f"{QUARTET_FILE[field]}.jsonl, e.g. {missing_recs[:3]}")
+                         f"{SIR4_FILE[field]}.jsonl, e.g. {missing_recs[:3]}")
 
     rows, st = [], Counter()
     for qid in ids:
         r, q = recs[qid], queries[qid]
         insp = sorted(r.get("inspiration") or [], key=lambda i: i.get("order", 0))
         if not insp:
-            raise SystemExit(f"{field}/{qid}: no inspirations in the QUARTET record")
+            raise SystemExit(f"{field}/{qid}: no inspirations in the SIR-4 record")
         # every gold's contribution text: primary set first, then alternatives
         gold_deltas: dict[str, str] = {}
         for i in insp:

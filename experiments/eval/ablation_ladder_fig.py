@@ -3,7 +3,7 @@
 ablation_ladder_fig.py -- the cumulative ablation as a ladder: x = stage, y = share of golds within the top k, one line per
 dataset. Rows: cross-field golds, same-field golds. Columns: k = 1, 5, 10. Stages (each a full ranking of the corpus):
   1 Qwen3 cosine  ->  2 multi-view scorer  ->  3 scorer + OpenIE entity graph (that model's own scorer, hollow marker)
-  ->  4 scorer + SciAffordGraph, CCMP gate off (same weights as 5)  ->  5 scorer + SciAffordGraph + CCMP = SciGraphIR
+  ->  4 scorer + SciAfford graph, CCMP gate off (same weights as 5)  ->  5 scorer + SciAfford graph + CCMP = SciGraphIR
 
     python3 eval/ablation_ladder_fig.py --out ../figures/fig_ablation_ladder
 """
@@ -18,8 +18,8 @@ INK, MUTED, RULE = "#262a30", "#7c828c", "#ced2da"
 DATASETS = [("sir4_cs", "SIR-4 CS", "#2a69a0", "o"), ("sir4_biology", "SIR-4 Biology", "#208070", "s"), ("sir4_physics", "SIR-4 Physics", "#705296", "^"),
             ("sir4_matsci", "SIR-4 MatSci", "#a47822", "D"), ("tomato", "TOMATO", "#c44e52", "v"), ("mir", "MIR", "#6e747e", "P")]
 _QC = f"{S4}/results/qualitative/quartet_cache"
-QUARTET = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
-STAGES = ["1\ncosine", "2\nscorer", "3\n+ entity\ngraph", "4\n+ frame\ngraph", "5\n+ CCMP"]
+SIR4_EXPORTS = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
+STAGES = ["1\ncosine", "2\nscorer", "3\n+ entity\ngraph", '4\n+ affordance representation\ngraph', "5\n+ CCMP"]
 KS = [1, 5, 10]
 
 
@@ -30,10 +30,10 @@ def openie_path(d):
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def load(path):
@@ -50,15 +50,15 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--out", required=True); ap.add_argument("--arm", default="auto", help="auto | hyb_ccmp | frame_ccmp"); a = ap.parse_args()
     fig, axes = plt.subplots(2, 3, figsize=(12.4, 6.6), gridspec_kw={"wspace": 0.28, "hspace": 0.62})
     for ax in axes.ravel(): style(ax)
-    rows = ["| dataset | stratum | n | k | cosine | scorer | + entity graph (own scorer) | + SciAffordGraph gate off | + CCMP (SciGraphIR) |", "|---|---|---|---|---|---|---|---|---|"]
+    rows = ["| dataset | stratum | n | k | cosine | scorer | + entity graph (own scorer) | + SciAfford graph gate off | + CCMP (SciGraphIR) |", "|---|---|---|---|---|---|---|---|---|"]
     handles = {}
     for ds, label, col, mk in DATASETS:
         d = f"{S4}/results/qualitative/drive_scan_{ds}"
         ARM, ARMLAB = frame_arm(d, "hops_", a.arm); F = load(f"{d}/hops_{ARM}.json"); O = load(f"{d}/hops_{ARM}_off.json") if os.path.exists(f"{d}/hops_{ARM}_off.json") else {}
         _ep = openie_path(d); E = load(_ep) if _ep else {}
-        if ds in QUARTET and os.path.exists(QUARTET[ds]):
+        if ds in SIR4_EXPORTS and os.path.exists(SIR4_EXPORTS[ds]):
             qz = {}
-            for x in json.load(open(QUARTET[ds])):
+            for x in json.load(open(SIR4_EXPORTS[ds])):
                 for doc, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], doc)] = m.get("stratum")
             for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
         for ri, s in enumerate(("cross", "same")):
@@ -85,9 +85,9 @@ def main():
     lab = {ds: l for ds, l, _, _ in DATASETS}
     fig.legend([handles[d] for d in order], [lab[d] for d in order], loc="lower center", ncol=6, fontsize=8.8, frameon=False, handlelength=2.6, columnspacing=2.0, bbox_to_anchor=(0.5, -0.02))
     fig.text(0.02, 0.99, "Cumulative ablation, final ranking at each stage:  1 Qwen3 cosine  ->  2 multi-view scorer  ->  3 scorer + OpenIE entity graph  ->  "
-             "4 scorer + SciAffordGraph, CCMP gate off  ->  5 + CCMP = SciGraphIR", fontsize=8.8, color=INK, ha="left")
+             "4 scorer + SciAfford graph, CCMP gate off  ->  5 + CCMP = SciGraphIR", fontsize=8.8, color=INK, ha="left")
     fig.text(0.02, 0.962, "Hollow marker: stage 3 is a separately trained model with its own scorer. Stages 4 and 5 share weights and differ only in the gate. "
-             "SIR-4: per-gold QUARTET stratum; TOMATO, MIR: query stratum.", fontsize=7.8, color=MUTED, ha="left")
+             "SIR-4: per-gold SIR-4 stratum; TOMATO, MIR: query stratum.", fontsize=7.8, color=MUTED, ha="left")
     fig.savefig(a.out + ".pdf", bbox_inches="tight"); fig.savefig(a.out + ".png", dpi=200, bbox_inches="tight")
     open(a.out + ".md", "w").write("\n".join(rows) + "\n"); print("wrote", a.out + ".png", a.out + ".md")
 

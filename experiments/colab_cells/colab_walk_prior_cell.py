@@ -18,7 +18,7 @@ def parse(log_path):
     m = re.search(r"valid_names:\s*\n\s*-\s*(\S+)", log); d["valid"] = m[1] if m else "?"
     m = re.search(r"train_names:\s*\n\s*-\s*(\S+)", log); d["train"] = m[1] if m else "?"
     d["dataset"] = re.sub(r"_(test|train)(_v16sc)?$", "", d["valid"])
-    d["graph"] = "SciAffordGraph" if "_v16sc" in d["valid"] else "OpenIE"
+    d["graph"] = "SciAfford graph" if "_v16sc" in d["valid"] else "OpenIE"
     m = re.search(r"\[ccmp\] responsibility head[^\n]*gate=(\w+)", log)
     d["ccmp"] = ("on" if m[1] == "True" else "gate off") if m else "no"
     m = re.search(r"\[route\] mode=(\w+)", log); d["route"] = m[1] if m else ""

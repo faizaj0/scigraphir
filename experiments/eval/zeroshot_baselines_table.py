@@ -12,7 +12,7 @@ table lacks (SPECTER2-base, SciNCL, ReasonIR-8B) are a read, not a run.
 TWO ROWS WILL NOT MATCH THE PRINTED TABLE. The BGE-large row matches to four decimals,
 which shows the scoring is the same. The BM25 and Qwen3 rows differ slightly because the
 thesis table took those two from a different runner (the transfer-matrix arms: a
-different BM25 tokeniser, and Qwen3 under the operator's instruction rather than the
+different BM25 tokeniser, and Qwen3 under the handcrafted scorer's instruction rather than the
 model card's). The file this script prints is one runner for all six; if the table is
 regenerated from it, all six rows share one definition. Say which source was used.
 

@@ -30,8 +30,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-SRC = f"{CARGO}/retriever/train/colab_train_v16sc_fusion_greasoner.ipynb"
+REPO_ROOT = os.path.dirname(ROOT)
+SRC = f"{REPO_ROOT}/retriever/train/colab_train_v16sc_fusion_greasoner.ipynb"
 
 # One notebook per domain. Everything downstream keys off DOMAIN/DATASET, so two
 # domains can run in two Colab sessions at once without sharing a single path.
@@ -43,7 +43,7 @@ _ap.add_argument("--domain", default="cs", choices=sorted(DOMAINS))
 # notebooks do is corpus-agnostic once DATASET is bound, so TOMATO is a flag rather than
 # a second generator -- a second generator is exactly how the fusion implementation came
 # to be a stale frozen copy once already. What actually differs is stated in the emitted
-# notebook: 1 gold per row (so --loss operator and fixed are arithmetically identical),
+# notebook: 1 gold per row (so --loss handcrafted and fixed are arithmetically identical),
 # the same question text repeating across rows (3,132 rows over 1,658 questions), and no
 # sets.json, so CompleteSet@k is undefined and dropped rather than reported as zeros.
 _ap.add_argument("--tomato", action="store_true",
@@ -59,7 +59,7 @@ _ap.add_argument("--batch", type=int, default=None,
 # TWO NOTEBOOKS, ONE GENERATOR. A second generator file is how the fusion code came
 # to be a stale frozen copy in the first place; a flag cannot drift from itself.
 _ap.add_argument("--variant", default="fusion", choices=["fusion", "belief"],
-                 help="fusion = operator/multi-view graph fusion; "
+                 help='fusion = handcrafted scorer/multi-view graph fusion; '
                       "belief = H3 semantic-prior graph reasoning, on its own")
 # ONE-ARM VARIANT. The full notebook trains six models; re-running it to change a single
 # scalar would repeat five finished experiments and overwrite their directories. With
@@ -69,11 +69,11 @@ _ap.add_argument("--variant", default="fusion", choices=["fusion", "belief"],
 _ap.add_argument("--cqig-lam", type=float, default=None, metavar="LAM",
                  help="build the single-arm CQIG lambda variant at this lam_init "
                       "(e.g. 0.9). Omit for the full notebook.")
-# THE OPERATOR ARM. `--cqig-lam 0.9` alone builds the two lambda/linker runs; adding
+# THE HANDCRAFTED SCORER ARM. `--cqig-lam 0.9` alone builds the two lambda/linker runs; adding
 # `--cqig-op centre` deadens those two as well and leaves exactly ONE live training cell,
 # so the third arm can be added to a finished pair without repeating either of them.
 _ap.add_argument("--cqig-op", default=None, choices=["centre", "centre-fixed"],
-                 help="build the CQIG operator arm on top of an already-run --cqig-lam "
+                 help='build the CQIG handcrafted scorer arm on top of an already-run --cqig-lam '
                       "pair. centre = h - (1-g)*mu; centre-fixed = h - lam*mu.")
 # THE ABLATION THAT DECIDES WHETHER THE REFERENCE BANK DOES ANYTHING. Combines with
 # --cqig-op, adding a SECOND live cell rather than modifying the first: mu=0 under a
@@ -110,7 +110,7 @@ _ap.add_argument("--no-cqig-arm", action="store_true",
                       "links, against the same control). The arm is included by default so "
                       "the two hypotheses share one control instead of each getting its own.")
 _ap.add_argument("--ccmp", action="store_true",
-                 help="CONTRASTIVE RESPONSIBILITY PROPAGATION. Two arms: a control, and a "
+                 help="Contrastive Continuation Message Passing. Two arms: a control, and a "
                       "run whose intermediate nodes are supervised by whether their "
                       "remaining bounded-hop paths lead more strongly to a gold than to "
                       "the semantic scorer's own hard negatives, with the predicted "
@@ -241,7 +241,7 @@ assert not (NOENT and not TOMATO), (
     "silently produce a notebook identical to the default one.")
 assert not LAM_ONLY or 0.0 < LAM < 1.0, "lam is sigmoid-parameterised, so 0 < lam < 1"
 assert not OP_ONLY or LAM_ONLY, (
-    "--cqig-op needs --cqig-lam: the operator arm is defined AT a lambda, and its control "
+    '--cqig-op needs --cqig-lam: the handcrafted scorer arm is defined AT a lambda, and its control '
     "is the semantic-linking run at that same lambda")
 assert not MU0 or LAM_ONLY, (
     "--cqig-mu-zero needs --cqig-lam: the ablation has to sit at the lambda whose result "
@@ -274,8 +274,8 @@ EXTRA = OP_ONLY or MU0 or MIX
 # single-arm mode, and the slug is what keeps two lambdas from landing in one run dir.
 # Identical for SIR-4, where LAM_ONLY is true exactly when LAM is set.
 LAM_SLUG = ("%g" % LAM).replace(".", "").replace("-", "") if LAM is not None else ""
-# Distinct per operator, so the adaptive and the fixed arm cannot land in one directory.
-# NOT `OP_SLUG`: that name is already taken inside the notebook for the operator ENCODER's
+# Distinct per handcrafted scorer, so the adaptive and the fixed arm cannot land in one directory.
+# NOT `OP_SLUG`: that name is already taken inside the notebook for the handcrafted scorer ENCODER's
 # filename suffix, and two different meanings under one name is how the components files
 # came to be loaded from the wrong place once already.
 OP_SUFFIX = {"centre": "ctr", "centre-fixed": "ctf"}.get(OP, "")
@@ -299,7 +299,7 @@ CQIG_ARM = CCMP and not LAM_ONLY and not _a.no_cqig_arm
 CQIG_ARM_LAM = 0.9
 # a_max is IN the directory name. It is the one knob that changes what the arm risks, so
 # two caps must never overwrite each other's run: 0.5 -> "mix05lam09". top-K is in it for
-# the same reason -- it changes the operator, not just its strength -- and because the
+# the same reason -- it changes the handcrafted scorer, not just its strength -- and because the
 # a_max=0.3 run already wrote into the a_max=0.5 directory once.
 TOPK_SLUG = f"k{TOPK}" if TOPK else ""
 MIX_SLUG = (f"mix{('%g' % AMAX).replace('.', '').replace('-', '')}{TOPK_SLUG}{LAM_SLUG}"
@@ -419,10 +419,10 @@ Within-domain CS run. Train on `sir4_cs_train_v16sc`, evaluate on
 `sir4_cs_test_v16sc`. The title used to say "additive-gate fusion", which was true when
 the notebook trained one arm and is wrong now that the fusion form is one of the two
 axes being varied.""" if RUN_SET else
-"""# SIR-4 CS — additive-gate fusion (operator ⊕ v16sc graph)
+"""# SIR-4 CS — additive-gate fusion (handcrafted scorer ⊕ SciAfford graph)
 
 Within-domain CS run. Train on `sir4_cs_train_v16sc`, evaluate on
-`sir4_cs_test_v16sc`. **Additive gate with the original operator-hard-negative
+`sir4_cs_test_v16sc`. **Additive gate with the original handcrafted scorer-hard-negative
 objective** — not lever D, not loss v2.""") + """
 
 """ + ("""This corpus, measured from the shipped graphs rather than quoted:
@@ -466,7 +466,7 @@ before anything runs."""))
 
 if LAM_ONLY:
     _ROWS = ([f"| **9e-centre** | CQIG, `lam_init={LAM}` + semantic seeding + "
-              f"`cqig_op={OP}` | the operator only, vs 9e-link |"] if OP_ONLY else [])
+              f"`cqig_op={OP}` | the handcrafted scorer only, vs 9e-link |"] if OP_ONLY else [])
     _ROWS += ([f"| **9e-mu0** | CQIG, `lam_init={LAM}`, `cqig_mu=zero` "
                f"| mu only, vs 9e-lam. **The ablation.** |"] if MU0 else [])
     if not EXTRA:
@@ -518,7 +518,7 @@ The **Results** section at the end of this notebook reads both runs back off Dri
 prints the table, the trajectories and a paired bootstrap. It trains nothing, so it is safe
 to re-run, and it reports MISSING rather than guessing if a run has not finished.
 
-Sections 5b to 5e still run. They are not experiments being repeated: the operator fit, the
+Sections 5b to 5e still run. They are not experiments being repeated: the handcrafted scorer fit, the
 BGE baseline and the learned scorer all write under `/content`, which does not survive a
 Colab reset, and 5e asserts on a memmap that 5d produces. They are seeded and deterministic.
 """))
@@ -536,14 +536,14 @@ exactly one thing:
 |---|---|---|
 {_NEWROWS}
 
-Sections 5b to 5e still run. They are not experiments being repeated: the operator fit, the
+Sections 5b to 5e still run. They are not experiments being repeated: the handcrafted scorer fit, the
 BGE baseline and the learned scorer all write under `/content`, which does not survive a
 Colab reset, and 5e asserts on a memmap that 5d produces. They are seeded and deterministic,
 so they rebuild the same scorer the finished runs used.
 {'''
 The two defects below are what 9e-lam and 9e-link were built to test, and both of those runs
 are finished. They are kept here because they are what `lam=''' + str(LAM) + '''` and semantic
-seeding MEAN, and this arm inherits both — it changes only the operator on top of them. Read
+seeding MEAN, and this arm inherits both — it changes only the handcrafted scorer on top of them. Read
 9e-centre for what is new.
 ''' if EXTRA else ''}
 ### The two things that are actually wrong
@@ -620,7 +620,7 @@ DATA_ROOT = f"{SCIGRAPHIR_ROOT}/retriever/data"
 S4       = f"{SCIGRAPHIR_ROOT}/experiments"
 BGE_PRED = f"{S4}/data/predictions_bge_{DATASET}_test.json"
 
-# THE OPERATOR'S ENCODER. Everything the operator produces -- cached embeddings,
+# THE HANDCRAFTED SCORER'S ENCODER. Everything the handcrafted scorer produces -- cached embeddings,
 # the fitted w/beta, the components npz -- is that encoder's output, so all three
 # are filename-scoped by it. Empty slug for BGE keeps every pre-Qwen path intact;
 # switching encoders can therefore never overwrite a calibration that trained
@@ -629,7 +629,7 @@ OP_MODEL = "/content/qwen3"
 import re as _re
 OP_SLUG = ("" if OP_MODEL == "BAAI/bge-large-en-v1.5"
            else "_" + _re.sub(r"[^a-z0-9]+", "-", OP_MODEL.lower()).strip("-"))
-print("operator encoder", OP_MODEL, "-> slug", OP_SLUG or "(none)")
+print('handcrafted scorer encoder', OP_MODEL, "-> slug", OP_SLUG or "(none)")
 
 try:
     from google.colab import userdata
@@ -681,12 +681,12 @@ if os.path.exists(BUNDLE):
         f"retriever/data/{TEST}/processed/stage1/nodes.csv",
         # DATASET-SCOPED ON SIR-4, UNSCOPED ON TOMATO. scigraphir_paths.is_legacy() is
         # `DATASET == "tomato"`, and _scoped() drops the subdirectory in that case, so
-        # TOMATO's probes live at cache/probes_*.jsonl with no tomato/ under it. bundle.py
-        # already gets this right (it calls cp.probes_path), so hardcoding the SIR-4 layout
+        # TOMATO's hypothetical answers live at cache/probes_*.jsonl with no tomato/ under it. bundle.py
+        # already gets this right (it calls cp.answers_path), so hardcoding the SIR-4 layout
         # here would fail the guard on a bundle that is in fact complete.
         f"retriever/probes/cache/__PROBEDIR__probes_train.jsonl",
         f"retriever/probes/cache/__PROBEDIR__probes_test.jsonl",
-        "retriever/eval/operator_scorer.py",
+        'retriever/eval/handcrafted_scorer.py',
         "experiments/eval/bge_sir4.py",
         "experiments/eval/score_sir4.py",
         "experiments/eval/semantic_scorer.py",
@@ -715,11 +715,11 @@ cells.append(reuse[4])
 cells.append(code('# Does a FRESH interpreter -- the one training actually uses -- see gfmrag?\nimport os, sys, subprocess\ndef _sub_import():\n    r = subprocess.run([sys.executable, "-c", "import gfmrag; print(gfmrag.__file__)"],\n                       capture_output=True, text=True, env=dict(os.environ))\n    return r.returncode == 0, (r.stdout.strip() or r.stderr[-1500:])\n\n_ok, _msg = _sub_import()\nif _ok:\n    print("subprocess import OK |", _msg)\nelse:\n    # REPAIR, DO NOT RAISE. The fix is one environment variable, it is exactly what\n    # run_model passes anyway, and raising would strand an otherwise healthy runtime.\n    os.environ["PYTHONPATH"] = os.pathsep.join(\n        ["/content/gfm-rag"] + ([os.environ["PYTHONPATH"]]\n                               if os.environ.get("PYTHONPATH") else []))\n    _ok, _msg = _sub_import()\n    assert _ok, (\n        "gfmrag imports in this kernel but NOT in a subprocess, and PYTHONPATH did not "\n        "fix it. The editable install failed AND /content/gfm-rag is not a usable "\n        "package root. Check that the unzip produced /content/gfm-rag/gfmrag/.\\n" + _msg)\n    print("editable install did not register; PYTHONPATH set instead |", _msg)'))
 # THE FUSION IMPLEMENTATION COMES FROM THE REPO, NOT FROM A FROZEN COPY INSIDE THE
 # SOURCE NOTEBOOK. Reusing cell 5 verbatim meant every SIR-4 notebook shipped a
-# snapshot that had drifted behind retriever/gfm-rag: multi-corpus operator
+# snapshot that had drifted behind retriever/gfm-rag: multi-corpus handcrafted scorer
 # tables, the loss-v2 flags and the learned semantic channel all existed in the repo
 # and none of them reached Colab, so editing the repo file changed nothing that ran.
 # Emitting the cell from the files on disk makes the repo the single source of truth.
-FORK = f"{CARGO}/retriever/gfm-rag"
+FORK = f"{REPO_ROOT}/retriever/gfm-rag"
 FUSION_FILES = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read()
                 for rel in ["gfmrag/models/fusion_reasoner.py",
                             "gfmrag/models/cqig.py",
@@ -750,8 +750,8 @@ FUSION_FILES = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read()
 # these files would terminate it early and emit a notebook that cannot parse.
 assert not any("'''" in v for v in FUSION_FILES.values()), "fusion source contains '''"
 cells.append(code(
-    "# === write the CARGO-fusion files into the fork (generated from the repo copies) ===\n"
-    "# Objective = OPERATOR-HARD-NEGATIVE contrastive (report Eq 3.9): negatives are the\n"
+    "# === write the SciGraphIR-fusion files into the fork (generated from the repo copies) ===\n"
+    '# Objective = HANDCRAFTED SCORER-HARD-NEGATIVE contrastive (report Eq 3.9): negatives are the\n'
     "# semantic scorer's own top hubs, so the graph is forced to fix its misses. Gate\n"
     "# gamma_init=0.01 (opt-in). `model.semantic` selects handcrafted vs learned scorer.\n"
     "import json, os\n"
@@ -1326,8 +1326,8 @@ if os.path.isdir(PARK):
 
 # CODE OVERLAY, applied before anything imports or shells out.
 # The bundles are 12-64 MB each and rebuilt rarely, so the scripts inside them go
-# stale against the repo. Right now all four ship a operator_scorer.py,
-# precompute_operator_components.py and score_sir4.py that predate the encoder
+# stale against the repo. Right now all four ship a handcrafted_scorer.py,
+# precompute_handcrafted_components.py and score_sir4.py that predate the encoder
 # scoping and the metric changes. Re-uploading 138 MB of zips to fix three files
 # is the wrong trade. Anything at {DRIVE}/code_overlay/<repo-relative path> is
 # copied over the unpacked bundle and wins, so one small upload fixes every domain
@@ -1349,8 +1349,8 @@ else:
 # Fail on the missing capability, not on a bare argparse exit code 2 twenty
 # minutes into a run.
 _need = {
-    f"{SCIGRAPHIR_ROOT}/retriever/eval/operator_scorer.py": ["--model", "model_slug"],
-    f"{SCIGRAPHIR_ROOT}/retriever/precompute/precompute_operator_components.py": ["--model"],
+    f"{SCIGRAPHIR_ROOT}/retriever/eval/handcrafted_scorer.py": ["--model", "model_slug"],
+    f"{SCIGRAPHIR_ROOT}/retriever/precompute/precompute_handcrafted_components.py": ["--model"],
     # "semantic-scorer comparison" is the comment on the KS tuple that added the
     # 25 cutoff. Probing for the literal "recall@25" would ALWAYS fail: the metric
     # keys are built by f-string from KS and never appear in the source.
@@ -1378,7 +1378,7 @@ assert cp.ROOT == SCIGRAPHIR_ROOT, f"scigraphir_paths resolved {cp.ROOT}, expect
 for s in ("train", "test"):
     for label, p in ((f"corpus {s}", f"{cp.corpus_dir(s)}/raw/documents.json"),
                      (f"queries {s}", f"{cp.corpus_dir(s)}/raw/{s}.json"),
-                     (f"probes {s}", cp.probes_path(s)),
+                     (f"hypothetical answers {s}", cp.answers_path(s)),
                      (f"graph {s}", f"{cp.graph_dir(s)}/processed/stage1/nodes.csv")):
         assert os.path.exists(p), f"missing {label}: {p}"
         print(f"  ok  {label:14} {p.replace(SCIGRAPHIR_ROOT, '<root>')}")
@@ -1393,24 +1393,24 @@ for split, g in (("train", TRAIN), ("test", TEST)):
     n = len(json.load(open(f"{dst}/documents.json")))
     print(f"  ok  graph corpus  {g}/raw/documents.json  ({n:,} docs)")
 
-SETS = f"{SCIGRAPHIR_ROOT}/benchmark/data/benchmark/__SETSDIR__/sets.json"
+SETS = f"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/__SETSDIR__/sets.json"
 print("  sets.json:", "present" if os.path.exists(SETS) else "ABSENT (CompleteSet@k -> 0)")
 !du -sh {SCIGRAPHIR_ROOT}
 
 # ---------------------------------------------------------------- persistence
 # Colab resets its runtime and /content does not survive it. Without this, every
-# reset costs the operator fit (~6 min), the BGE baseline (~2 min) and the Qwen3
+# reset costs the handcrafted scorer fit (~6 min), the BGE baseline (~2 min) and the Qwen3
 # node index (30-45 min). Those all live under /content, so they are copied to
 # Drive as they are produced and copied back on the next run.
 # NOT under OUT_ROOT. Everything in here is keyed to the GRAPH, not to which arms a
-# notebook trains: the Qwen3 node index, the operator embeddings, the BGE predictions.
+# notebook trains: the Qwen3 node index, the handcrafted scorer embeddings, the BGE predictions.
 # Putting it under the run-set namespace orphaned the existing cache and demanded a
 # 45-minute index rebuild per run set for an identical artefact. graph_fingerprint.json
 # is what makes sharing safe -- it refuses to restore across a rebuilt graph.
 CACHE = f"{DRIVE}/outputs/{DATASET}/cache"
 
 def _fingerprint():
-    \"\"\"Identify the GRAPHS the derived artefacts were built against.
+    """Identify the GRAPHS the derived artefacts were built against.
 
     operator_components.npz is column-ordered to the graph's nodes.csv document
     order, and the Qwen3 index is built over the graph's node names. Restoring
@@ -1418,7 +1418,7 @@ def _fingerprint():
     error -- the same shape as every contamination this project has hit. So both
     are gated on the graph files being byte-identical; everything else depends
     only on the corpus and restores unconditionally.
-    \"\"\"
+    """
     fp = {}
     for g in (TRAIN, TEST):
         s1 = f"{DATA_ROOT}/{g}/processed/stage1"
@@ -1431,7 +1431,7 @@ def _index_dirs(g):
     return [d for d in os.listdir(pr) if d != "stage1"] if os.path.isdir(pr) else []
 
 def save_cache():
-    \"\"\"Copy whatever exists to Drive. Safe to call at any point, repeatedly.\"\"\"
+    """Copy whatever exists to Drive. Safe to call at any point, repeatedly."""
     os.makedirs(CACHE, exist_ok=True)
     json.dump(_fingerprint(), open(f"{CACHE}/graph_fingerprint.json", "w"), indent=1)
     saved = []
@@ -1465,7 +1465,7 @@ def restore_cache():
         got.append("op_emb")
     pj = f"{CACHE}/operator_params__PARAMDS__{OP_SLUG}.json"
     if os.path.exists(pj):
-        shutil.copy(pj, f"{SCIGRAPHIR_ROOT}/retriever/eval/"); got.append("operator params")
+        shutil.copy(pj, f"{SCIGRAPHIR_ROOT}/retriever/eval/"); got.append('handcrafted scorer params')
     bp = f"{CACHE}/{os.path.basename(BGE_PRED)}"
     if os.path.exists(bp):
         os.makedirs(os.path.dirname(BGE_PRED), exist_ok=True)
@@ -1567,9 +1567,9 @@ def save_cache():
 print("\\nstripped. Every later cell must run with force_reload=False: the graph is "
       "unchanged and only the QA tensors need rebuilding.")'''))
 
-cells.append(md("## 5b. Phase 3 — Qwen3 operator (was hours on a laptop, minutes here)\n"
-                "Encodes 24,384 documents, 6,497 questions and ~49k probes, fits the "
-                "operator's four parameters, then caches the raw components so `w0,w1,w2,β` "
+cells.append(md('## 5b. Phase 3 — Qwen3 handcrafted scorer (was hours on a laptop, minutes here)\n'
+                "Encodes 24,384 documents, 6,497 questions and ~49k hypothetical answers, fits the "
+                "handcrafted scorer's four parameters, then caches the raw components so `w0,w1,w2,β` "
                 "stay trainable inside the fusion. Run locally this thrashed a 17 GB "
                 "machine into swap; on an A100 the encoding is the only real cost."))
 cells.append(code('''import os, sys, subprocess, time
@@ -1609,14 +1609,14 @@ def sh(cmd, cwd):
 
 # 1. Fit w0,w1,w2,beta in the same Qwen3 space used by the graph model.
 #    -u belt-and-braces alongside PYTHONUNBUFFERED.
-sh(f"python3 -u eval/operator_scorer.py --dataset $SCIGRAPHIR_DATASET --model {OP_MODEL} "
+sh(f"python3 -u eval/handcrafted_scorer.py --dataset $SCIGRAPHIR_DATASET --model {OP_MODEL} "
    "--train_fit 2500 --dev 600", KGDIR)
 
 # 1b. WARM-START THE FUSION FROM THIS CORPUS'S FIT.
 #     fusion_reasoner.py hardcodes W_INIT=(1.05, 1.05, 0.25) and BETA_INIT=0.95,
 #     both fitted on TOMATO. Inside the model w and beta are learnable deltas on
 #     top of those, so training CAN move them -- but a SIR-4 run would still
-#     begin from another corpus's calibration, and operator_scorer.py used to
+#     begin from another corpus's calibration, and handcrafted_scorer.py used to
 #     print its own fitted values and save them nowhere. Now it writes them and
 #     they get patched in here.
 import json, re
@@ -1639,7 +1639,7 @@ for l in open(FR):
 #    graph's document nodes. This is what lets the four parameters stay
 #    learnable inside FusionGraphReasoner instead of being frozen upstream.
 for split, graph in (("train", TRAIN), ("test", TEST)):
-    sh(f"python3 -u precompute/precompute_operator_components.py --model {OP_MODEL} "
+    sh(f"python3 -u precompute/precompute_handcrafted_components.py --model {OP_MODEL} "
        f"--dataset $SCIGRAPHIR_DATASET --model /content/qwen3 "
        f"--graph {graph} --split {split}", KGDIR)
 
@@ -1647,7 +1647,7 @@ for g in (TRAIN, TEST):
     p = f"{DATA_ROOT}/{g}/operator_components{OP_SLUG}.npz"
     assert os.path.exists(p), f"missing {p}"
     z = __import__("numpy").load(p, allow_pickle=True)
-    assert "qwen" in str(z["encoder"]).lower(), f"non-Qwen operator components: {p}"
+    assert "qwen" in str(z["encoder"]).lower(), f"non-Qwen handcrafted scorer components: {p}"
     print(f"  {g}: {os.path.getsize(p)/1e6:.0f} MB")
 save_cache()'''))
 
@@ -1713,7 +1713,7 @@ cells.append(md("""## 5d. The proposed scorer vs the current one
 
 **Self-contained. Sections 6 onwards are the graph run — stop after this cell.**
 
-A popularity network predicts a paper's general matchability from its embedding
+A background matchability network predicts a paper's general matchability from its embedding
 alone, `p_hat(d) = softplus(g(E(d)))`. That discounts every hypothetical-answer
 match, `H~ = H / (eps + p_hat(d))**beta`. After normalisation the answer scores
 are sorted descending, and one MLP reads the whole vector:
@@ -1722,9 +1722,9 @@ are sorted descending, and one MLP reads the whole vector:
 
 Both networks train together under **`L = L_rank + lambda_pop * L_pop`**, where
 `L_rank` teaches the ranking and `L_pop` keeps `p_hat` close to measured
-training-bank popularity.
+training-bank background matchability.
 
-| arm | pooling | popularity | zero-shot | params |
+| arm | pooling | background matchability | zero-shot | params |
 |---|---|---|---|--:|
 | `dense` | none, cosine only — the floor | — | yes | 0 |
 | `current` | handcrafted `sum` + `max` — the target | leave-one-query-out | **no** | 4 |
@@ -1733,13 +1733,13 @@ training-bank popularity.
 `mlp` is the proposed architecture: the predictor trains with the scorer under
 `L_rank + lambda_pop * L_pop`, and it is the arm the graph fusion in 9b loads.
 
-Two popularity variants exist for attribution and are **not run here**: `mlpbank`
-(popularity measured directly against the frozen train-answer bank) and `mlp2s`
+Two background matchability variants exist for attribution and are **not run here**: `mlpbank`
+(background matchability measured directly against the frozen train-answer bank) and `mlp2s`
 (that bank distilled into a network, then frozen). Add them to `--arms` if you want
-to split credit between the pooling and the popularity term. Neither can drive the
+to split credit between the pooling and the background matchability term. Neither can drive the
 fusion, which needs a jointly-trained predictor.
 
-**Why popularity is part of the arm, not a separate axis.** `current` discounts a
+**Why background matchability is part of the arm, not a separate axis.** `current` discounts a
 paper using the *other test queries'* hypothetical answers, so it cannot score a
 single query and is not zero-shot. The proposal replaces that with a network
 reading only the paper's own embedding. The two rows therefore compare baseline
@@ -1764,7 +1764,7 @@ computes its max from.
 
 **Reading it.** `dense` says whether the hypothetical answers are worth anything at
 all on this corpus. The `mlp` minus `current` row is the claim. Three seeds, and
-the log prints which popularity source each arm used so you can check rather than
+the log prints which background matchability source each arm used so you can check rather than
 trust."""))
 cells.append(code('''# NO GRAPH, NO REASONER, NO FUSION. Reuses only the embedding caches 5b produced.
 import os, shutil, json
@@ -1772,10 +1772,10 @@ SEM = f"{S4}/results/semantic_{DATASET}"
 os.makedirs(SEM, exist_ok=True)
 
 # --train_fit 0 means EVERY train query left after the dev slice. The old 2,500
-# cap came from operator_scorer.py, where it fitted four parameters and more data
+# cap came from handcrafted_scorer.py, where it fitted four parameters and more data
 # bought nothing; the learned arms here have 34-200 parameters and their measured
 # failure mode is overfitting, so the cap was discarding 2,645 CS queries for no
-# reason. --dev 300, not the operator's 600, for the same reason: dev is sliced
+# reason. --dev 300, not the handcrafted scorer's 600, for the same reason: dev is sliced
 # first, so on matsci it is the difference between 704 and 1,004 fit queries, and
 # 300 is still ample for a stable nDCG@10 selection signal.
 sh(f"python3 -u eval/semantic_scorer.py --dataset $SCIGRAPHIR_DATASET --model {OP_MODEL} "
@@ -1787,13 +1787,13 @@ sh(f"python3 -u eval/semantic_scorer.py --dataset $SCIGRAPHIR_DATASET --model {O
 
 # For the TWO-STAGE variant (predictor fitted to the bank targets and frozen
 # before the scorer trains), rerun with --mlp_pop_joint 0. That is the cleaner
-# attribution if you need to split credit between the pooling and the popularity
+# attribution if you need to split credit between the pooling and the background matchability
 # term; joint is the proposed architecture.'''))
 
 cells.append(code('''# Official evaluator on every arm, same flags, same slices.
 COLS = "mrr,ndcg@5,recall@3,recall@5,recall@10,recall@25,recall@100__CSET__"
 QS   = f"{SCIGRAPHIR_ROOT}/retriever/data/{DATASET}_test/raw/test.json"
-LOSS = "fixedloss"           # matches --loss fixed above; "operatorloss" for --loss operator
+LOSS = "fixedloss"           # matches --loss fixed above; "operatorloss" for --loss handcrafted
 # `dense` is untrained, so its file carries no loss tag.
 # `dense` is untrained, so its file carries no loss tag.
 ARMS = (("dense",   "dense query-document only",      "dense"),
@@ -1876,10 +1876,10 @@ print(f"\\ncopied {len(os.listdir(SEM))} file(s) to {dst}")'''))
 
 cells.append(md("""## 5e. Cache the learned scorer so the graph fusion can use it
 
-Section 5d trained the sorted-MLP and its popularity predictor. This packages what the
+Section 5d trained the sorted-MLP and its background matchability predictor. This packages what the
 fusion needs to run that scorer as its semantic channel, aligned to the graph's document
 order: the per-answer match matrix, the direct similarities, the answer-validity mask,
-and the document embeddings the popularity predictor reads.
+and the document embeddings the background matchability predictor reads.
 
 **The match matrix is referenced, not copied.** `semantic_scorer.py` already wrote it as a
 memmap (0.1 GB on matsci, 1.8 GB on CS), and duplicating it per graph would cost more disk
@@ -1888,13 +1888,13 @@ npz carries its path and the permutation from corpus order into `nodes.csv` orde
 fusion slices and permutes only the rows in each batch.
 
 Both halves of the checkpoint are required. A scorer loaded without its predictor is a
-trained readout paired with an untrained popularity, which is a model that never existed."""))
+trained readout paired with an untrained background matchability, which is a model that never existed."""))
 cells.append(code('''# 5d must have run: the checkpoint and the memmap both come from it.
 import numpy as np          # section 7 imports it too; 5e runs first
 SEM_TAG   = f"mlp_{LOSS}" if "LOSS" in dir() else "mlp_fixedloss"
 SEM_CKPT  = f"{SEM}/params_semantic_{SEM_TAG}_{DATASET}.json"
 SEM_POP   = f"{SEM}/popnet_semantic_{SEM_TAG}_{DATASET}.pt"
-for _p, _what in ((SEM_CKPT, "scorer"), (SEM_POP, "popularity predictor")):
+for _p, _what in ((SEM_CKPT, "scorer"), (SEM_POP, "background matchability predictor")):
     assert os.path.exists(_p), (
         f"missing the trained {_what}: {_p}\\nRun section 5d first (it needs "
         f"--mlp_pop_joint 1, which writes the predictor next to the scorer).")
@@ -1998,7 +1998,7 @@ cells.append(code('''import os, subprocess, numpy as np
 BATCH = 2
 
 # LOSS SETTINGS, READ FROM HERE BY BOTH ARMS. Deliberately not per-call arguments:
-# section 9 and 9b must run the same objective, or "learned scorer beats operator"
+# section 9 and 9b must run the same objective, or "learned scorer beats handcrafted scorer"
 # is confounded with "loss v2 beats loss v1" and neither claim survives.
 #
 # PER_GOLD=1        every gold must individually beat the lineup. The legacy loss
@@ -2024,7 +2024,7 @@ PER_GOLD, HARDNEG_GRAPH = "1", "50"
 # the other is not a comparison.
 EPOCHS = 10
 
-def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", overwrite=False,
+def run_model(epochs, force_reload, suffix, batch=None, semantic='handcrafted', overwrite=False,
               config="sft_training_fusion", extra=None, cqig=False,
               cqig_pool=64, cqig_m=16, cqig_norm="layer", cqig_layers="last",
               cqig_rounds=1, cqig_lam=None, cqig_link="exact", cqig_link_k=3,
@@ -2037,14 +2037,14 @@ def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", ove
               ccmp=False, ccmp_w=0.1, ccmp_neg=64, ccmp_m=2000,
               ccmp_gate=True, ccmp_gate_norm=True, ccmp_eta=0.5, ccmp_lr=None,
               ccmp_residual=False, ccmp_identity_w=1.0):
-    """semantic='operator' is the handcrafted scorer; 'mlp' is the learned one from 5d.
+    """semantic='handcrafted' is the handcrafted scorer; 'mlp' is the learned one from 5d.
 
     Both arms are the SAME fusion: same gate, same relu floor, same hard-negative
     objective, same graph. Only which scorer supplies the semantic channel changes, so
     the pair is a controlled comparison rather than two different models.
     """
     batch = BATCH if batch is None else batch
-    assert semantic in ("operator", "mlp"), semantic
+    assert semantic in ('handcrafted', "mlp"), semantic
     for g in (TRAIN, TEST):
         component_path = f"{DATA_ROOT}/{g}/operator_components{OP_SLUG}.npz"
         assert os.path.exists(component_path), f"missing {component_path}; run Section 5b"
@@ -2108,8 +2108,8 @@ def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", ove
                PYTHONPATH=os.pathsep.join(
                    ["/content/gfm-rag"] + ([os.environ["PYTHONPATH"]]
                                            if os.environ.get("PYTHONPATH") else [])),
-               OPERATOR_COMPONENTS=f"{DATA_ROOT}/{TRAIN}/operator_components{OP_SLUG}.npz",
-               OPERATOR_COMPONENTS_TEST=f"{DATA_ROOT}/{TEST}/operator_components{OP_SLUG}.npz",
+               HANDCRAFTED_COMPONENTS=f"{DATA_ROOT}/{TRAIN}/operator_components{OP_SLUG}.npz",
+               HANDCRAFTED_COMPONENTS_TEST=f"{DATA_ROOT}/{TEST}/operator_components{OP_SLUG}.npz",
                # Per-epoch stratified eval. The slice patch in cell 6 reads BOTH of
                # these from the environment and falls back to an empty dict when a
                # path is missing or unset. Empty dicts are not a soft failure: with
@@ -2122,7 +2122,7 @@ def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", ove
                STRAT_TEST=f"{DATA_ROOT}/{DATASET}_test/raw/test.json",
                STRAT_BGE=BGE_PRED,
                # the LEARNED scorer's inputs and its warm start. Harmless under
-               # semantic=operator, which never reads them.
+               # semantic=handcrafted, which never reads them.
                SEMANTIC_COMPONENTS=f"{DATA_ROOT}/{TRAIN}/semantic_components{OP_SLUG}.npz",
                SEMANTIC_COMPONENTS_TEST=f"{DATA_ROOT}/{TEST}/semantic_components{OP_SLUG}.npz",
                SEMANTIC_CKPT=SEM_CKPT, SEMANTIC_POPNET=SEM_POP,
@@ -2163,7 +2163,7 @@ def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", ove
                # any target is seen, no target label or query touched, nothing fine-tuned.
                CQIG_LINK=str(cqig_link), CQIG_LINK_K=str(cqig_link_k),
                CQIG_LINK_T=str(cqig_link_t), CQIG_LINK_MIN=str(cqig_link_min),
-               #   CQIG_OP     which OPERATOR the same statistic drives. Not a variant of
+               #   CQIG_OP     which HANDCRAFTED SCORER the same statistic drives. Not a variant of
                #               the gate; a different thing done with the same mu, alpha,
                #               tau and lam, via the same forward pre-hook.
                #               gate         = h * g. The original. A damped node sends a
@@ -2190,7 +2190,7 @@ def run_model(epochs, force_reload, suffix, batch=None, semantic="operator", ove
                #                      load-bearing and CQIG's premise is not what improved
                #                      anything. Illegal with a centring op (h - c*0 = h).
                CQIG_MU=str(cqig_mu),
-               # additive gate, operator-hard-negative objective, plus the two
+               # additive gate, handcrafted scorer-hard-negative objective, plus the two
                # multi-gold / graph-negative corrections defined above.
                FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
                PER_GOLD=PER_GOLD, HARDNEG_GRAPH=HARDNEG_GRAPH,
@@ -2443,14 +2443,14 @@ else:
                       'save_cache()'))
 
 if not BELIEF:
-    # Under a run set run_cell() drops the section-9 operator arm, leaving this heading
+    # Under a run set run_cell() drops the section-9 handcrafted scorer arm, leaving this heading
     # over nothing -- a section that appears to train something and does not.
-    # DROPPED ON TOMATO. The operator is a fitted scorer, so an operator+graph row is a
+    # DROPPED ON TOMATO. The handcrafted scorer is a fitted scorer, so an handcrafted scorer+graph row is a
     # third semantic channel competing with the two training-free baselines and the
     # multi-view arm, and it costs a full training run to say something the SIR-4
     # notebooks already say. The floors here are BGE and Qwen3 dense; the graph arms all
     # run on the multi-view scorer.
-    cells.append(None if (RUN_SET or TOMATO) else md("## 9. Train Qwen3-operator fusion"))
+    cells.append(None if (RUN_SET or TOMATO) else md('## 9. Train Qwen3-handcrafted scorer fusion'))
     cells.append(None if TOMATO else
                  run_cell('RUN_DIR = run_model(epochs=EPOCHS, force_reload=False,\n'
                           '                    suffix=f"fusion_qwenop_epoch{EPOCHS}_b{BATCH}")',
@@ -2462,18 +2462,18 @@ if not BELIEF:
         "3A, and the four are read together in the Results section at the bottom.\n" if RUN_SET
         else "## 9b. Multi-view + graph — the main arm\n") + """
 
-    The graph half is untouched: same gate, same relu floor, same operator-hard-negative
-    objective, same v16sc graph, same epochs. The only change is which scorer produces the
+    The graph half is untouched: same gate, same relu floor, same handcrafted scorer-hard-negative
+    objective, same SciAfford graph, same epochs. The only change is which scorer produces the
     semantic channel that the gate reads and the negatives are mined from.
 
     | | section 9 | here |
     |---|---|---|
     | semantic channel | `w0 z(dense) + w1 z(S/p^β) + w2 z(M/p^β)` | sorted-input MLP over the full match profile |
-    | popularity | leave-one-out over the other test queries | predicted from the paper's embedding |
+    | background matchability | leave-one-out over the other test queries | predicted from the paper's embedding |
     | zero-shot | no | yes |
     | warm start | fitted w, β from 5b | trained checkpoint from 5d |
 
-    Both the scorer and its popularity predictor keep training under the fusion's ranking
+    Both the scorer and its background matchability predictor keep training under the fusion's ranking
     loss, with the same `λ_pop` anchor 5d selected the checkpoint under. Set
     `model.semantic_train=false` in `run_model` to freeze them and attribute any gain to the
     graph alone.
@@ -2493,7 +2493,7 @@ if not BELIEF:
     if TOMATO:
         cells.append(md("### 9b-ii. CCMP ablation\n"
                         "One variable against 9b: identical scorer, fusion, gate and "
-                        "objective, with contrastive responsibility propagation on. "
+                        "objective, with Contrastive Continuation Message Passing on. "
                         "Intermediate nodes are supervised by whether their remaining "
                         "bounded-hop paths lead more strongly to a gold than to the "
                         "semantic scorer's own hard negatives, and the predicted "
@@ -2613,7 +2613,7 @@ ARMS = ([("semantic-prior graph (H3)", 'globals().get("RUN_DIR_BEL")', 'f"belief
   ("no-prior control",        'globals().get("RUN_DIR_NOPRIOR")', 'f"belief_noprior_epoch{EPOCHS}"')]
  if BELIEF else
  ([] if TOMATO else
-  [("operator + graph",   'globals().get("RUN_DIR")', 'f"fusion_qwenop_epoch{EPOCHS}"')])
+  [('handcrafted + graph',   'globals().get("RUN_DIR")', 'f"fusion_qwenop_epoch{EPOCHS}"')])
  + [("multi-view + graph", 'globals().get("RUN_DIR_MLP")', 'f"fusion_qwenmlp_epoch{EPOCHS}"')]
  + ([("multi-view + graph + CCMP", 'globals().get("RUN_DIR_MLP_CCMP")',
       'f"fusion_qwenmlp_ccmp_epoch{EPOCHS}"'),
@@ -2629,16 +2629,16 @@ ARMS = ([("semantic-prior graph (H3)", 'globals().get("RUN_DIR_BEL")', 'f"belief
       'f"fusion_qwenmlp_cqignode_epoch{EPOCHS}"'),
      ("CQIG multi-layer (%s)" % CQIG_ML, 'globals().get("RUN_DIR_CQIG_ML")',
       'f"fusion_qwenmlp_cqigml_epoch{EPOCHS}"')]))
-A4_FUSION = """ARMS4 = [("operator",         f"{SEMD}/scores_semantic_current_{LOSSD}.json"),
+A4_FUSION = """ARMS4 = [("handcrafted scorer",         f"{SEMD}/scores_semantic_current_{LOSSD}.json"),
          ("multi-view",       f"{SEMD}/scores_semantic_mlp_{LOSSD}.json"),
-         ("operator+graph",   f"{globals().get('RUN_DIR') or '_none_'}/scores.json"),
+         ("handcrafted scorer+graph",   f"{globals().get('RUN_DIR') or '_none_'}/scores.json"),
          ("multi-view+graph", f"{globals().get('RUN_DIR_MLP') or '_none_'}/scores.json")]
 # The CQIG arms, in the order of the 9e-i table. Any that was not run is skipped.
 ARMS4 += [("mv+graph+CQIG",        f"{globals().get('RUN_DIR_CQIG') or '_none_'}/scores.json"),
           ("mv+graph+CQIG node",   f"{globals().get('RUN_DIR_CQIG_NODE') or '_none_'}/scores.json"),
           ("mv+graph+CQIG ML",     f"{globals().get('RUN_DIR_CQIG_ML') or '_none_'}/scores.json")]"""
 # TOMATO ARM SET. Two training-free dense floors (BGE, Qwen3), then the multi-view scorer
-# with the graph off and on, then the gate. No operator row: the floors are the untrained
+# with the graph off and on, then the gate. No handcrafted scorer row: the floors are the untrained
 # encoders, so every delta below them is attributable to something this project built.
 # BGE vs Qwen3 is the encoder control -- without it, "graph beats BGE" is confounded with
 # "Qwen3 beats BGE", since every learned arm runs on Qwen3.
@@ -2660,10 +2660,10 @@ C_FUSION_TOMATO = """CONTRASTS = [("BGE dense",       "Qwen3 dense",      "ENCOD
 A4_BELIEF = """ARMS4 = [("multi-view",        f"{SEMD}/scores_semantic_mlp_{LOSSD}.json"),
          ("no-prior control",  f"{globals().get('RUN_DIR_NOPRIOR') or '_none_'}/scores.json"),
          ("semantic-prior H3", f"{globals().get('RUN_DIR_BEL') or '_none_'}/scores.json")]"""
-C_FUSION = """CONTRASTS = [("operator",       "operator+graph",   "graph adds, operator"),
+C_FUSION = """CONTRASTS = [("handcrafted scorer",       "handcrafted scorer+graph",   "graph adds, handcrafted scorer"),
              ("multi-view",     "multi-view+graph", "graph adds, multi-view"),
-             ("operator",       "multi-view",       "scorer swap, no graph"),
-             ("operator+graph", "multi-view+graph", "scorer swap, with graph")]
+             ("handcrafted scorer",       "multi-view",       "scorer swap, no graph"),
+             ("handcrafted scorer+graph", "multi-view+graph", "scorer swap, with graph")]
 CONTRASTS += [("multi-view+graph",  "mv+graph+CQIG",     "THE HYPOTHESIS: CQIG"),
               ("mv+graph+CQIG node", "mv+graph+CQIG",    "normalisation: node -> layer"),
               ("mv+graph+CQIG",      "mv+graph+CQIG ML", "gating earlier layers too")]"""
@@ -2690,8 +2690,8 @@ if LAM_ONLY:
            _LAB_LAM, _LAB_LNK, "exact -> semantic seeding",
            "multi-view+graph", _LAB_LNK, "THE HYPOTHESIS, both fixes"))
     if OP_ONLY:
-        # The operator arm's control is the LINK arm, not the lam arm: both carry this lam
-        # and semantic seeding, so the pair differs in the operator alone. Against 9e-lam it
+        # The handcrafted scorer arm's control is the LINK arm, not the lam arm: both carry this lam
+        # and semantic seeding, so the pair differs in the handcrafted scorer alone. Against 9e-lam it
         # would differ in two things and the delta could not be attributed.
         _LAB_CTR = f"CQIG {OP_SUFFIX}{LAM_SLUG}"
         ARMS += [(f"CQIG {OP} lam={LAM}", 'globals().get("RUN_DIR_CQIG_CTR")',
@@ -2763,9 +2763,9 @@ if RUN_SET and not BELIEF:
          ("2B  no gate, mixture",  f"{globals().get('RUN_DIR_MIX')     or '_none_'}/scores.json"),
          ("3A  lam, additive",     f"{globals().get('RUN_DIR_CQIG_LAM') or '_none_'}/scores.json"),
          ("3B  lam, mixture",      f"{globals().get('RUN_DIR_MIX_LAM') or '_none_'}/scores.json")]
-# The operator row is kept only if section 9 was run; under a run set it is not.
+# The handcrafted scorer row is kept only if section 9 was run; under a run set it is not.
 if globals().get("RUN_DIR"):
-    ARMS4.insert(1, ("operator, no graph", f"{SEMD}/scores_semantic_current_{LOSSD}.json"))"""
+    ARMS4.insert(1, ("handcrafted scorer, no graph", f"{SEMD}/scores_semantic_current_{LOSSD}.json"))"""
     # Every contrast moves exactly one thing. The 2x2 supports four such pairs plus the
     # two "does the graph help at all" rows; nothing here stacks two changes.
     C_FUSION = """CONTRASTS = [
@@ -3316,7 +3316,7 @@ golds the scorer buries, so the test is graph recall@10 split by $r_{\mathrm{sem
 - **deep buckets rise, shallow holds** -- the hypothesis survives.
 - **deep flat, shallow falls** -- the graph cannot fit those golds, and the reweighting is
   moving gradient onto examples the architecture does not support. This is what the
-  construction results predict: dissimilar golds share no frame node with the query, so they
+  construction results predict: dissimilar golds share no affordance representation node with the query, so they
   are reachable but not rankable.
 - **everything flat** -- $r_{\mathrm{sem}}$ on TRAIN queries is not $r_{\mathrm{sem}}$ at
   test. The scorer trains jointly and fits its own queries, so train ranks are systematically
@@ -3555,7 +3555,7 @@ same graph and the same objective. The one thing that differs is the fusion form
 
 if OP_ONLY:
     _ADAPT = OP == "centre"
-    cells.append(md(f"""### 9e-centre. The third run — the same statistic, a different operator
+    cells.append(md(f"""### 9e-centre. The third run — the same statistic, a different handcrafted scorer
 
 The two arms above both spend $I$ the same way: they **scale** the state. This one spends it
 by **subtracting** the background instead. It is not a variant of the gate; it is the other
@@ -3579,7 +3579,7 @@ is a function of the graph's relation text alone, expanded across the batch, so 
 query-independent and $\\mathbb E_a[m(\\mathbf h_{{av}},r)]=m(\\boldsymbol\\mu_v,r)$ holds
 exactly. With $\\kappa_{{qv}}=g_{{qv}}$ the whole family is one coefficient:
 
-| `cqig_op` | operator | what it is |
+| `cqig_op` | handcrafted scorer | what it is |
 |---|---|---|
 | — (`cqig_lam=0`) | $\\mathbf h$ | the ungated reasoner, under every op |
 | `centre-fixed` | $\\mathbf h-\\lambda\\boldsymbol\\mu_v$ | fixed centring, **query-independent** |
@@ -3588,7 +3588,7 @@ exactly. With $\\kappa_{{qv}}=g_{{qv}}$ the whole family is one coefficient:
 | `gate` | $g_{{qv}}\\mathbf h$ | 9e-lam and 9e-link |
 
 **This run is `{OP}`.** Its control is **9e-link, not 9e-lam**: both carry `lam={LAM}` and
-semantic seeding, so the pair differs in the operator and nothing else.
+semantic seeding, so the pair differs in the handcrafted scorer and nothing else.
 
 ### Two corrections to how this was pitched
 
@@ -3624,24 +3624,24 @@ embedding, so $\\boldsymbol\\mu$ is large and $\\boldsymbol\\delta$ is ~1% of it
 Subtracting {'about half of' if _ADAPT else str(LAM)} $\\boldsymbol\\mu$ removes a large,
 *directional* part of the state, where gating at the same coefficient only shortens it.
 `layer_norm: yes` then renormalises much of a magnitude change away and leaves the direction
-change, so this operator acts through direction whether or not that was the intent. A new log
+change, so this handcrafted scorer acts through direction whether or not that was the intent. A new log
 line measures it directly:
 
 ```
 [cqig]   edit ||h~-h||/||h||: mean=... max=... on ...% of live nodes
 ```
 
-**Read it before the metrics.** A mean near zero means the operator did nothing and the arm
+**Read it before the metrics.** A mean near zero means the handcrafted scorer did nothing and the arm
 is uninformative rather than negative. A mean near 1 means the state was largely destroyed,
 and the honest next step is {OP} at a lower $\\lambda$, not "centring fails".
 
 **One thing that is genuinely lost:** with $\\tau$ at the calibrated median, $\\kappa\\approx0.5$
 at init, so step 0 already subtracts half the background everywhere. `gamma_init=0.01` was
-chosen so the fusion *begins* as the semantic scorer; the graph operator no longer begins
+chosen so the fusion *begins* as the semantic scorer; the graph handcrafted scorer no longer begins
 where the gated arms began. The comparison is therefore between two training trajectories,
 not a perturbation of one. That is not a flaw, but it should be stated rather than discovered."""))
     cells.append(code(
-        '# THE THIRD NEW RUN: same lam, same semantic seeding, DIFFERENT operator.\n'
+        '# THE THIRD NEW RUN: same lam, same semantic seeding, DIFFERENT handcrafted scorer.\n'
         '# cqig_op goes through the environment as CQIG_OP (the model reads it when the\n'
         '# config leaves cqig_op null), so nothing about the other two arms changes.\n'
         '#\n'
@@ -3655,8 +3655,8 @@ not a perturbation of one. That is not a flaw, but it should be stated rather th
         '#      Near 0 = the arm is uninformative, not negative. Near 1 = the state was\n'
         '#      destroyed; rerun at a lower lam before concluding anything.\n'
         '#   3. "informativeness AUC"                should be UNCHANGED from 9e-link: the\n'
-        '#      operator does not touch I. A moved AUC means something else changed.\n'
-        '#   4. "[diag] ... graph"                   the operator acts on the graph channel.\n'
+        '#      handcrafted scorer does not touch I. A moved AUC means something else changed.\n'
+        '#   4. "[diag] ... graph"                   the handcrafted scorer acts on the graph channel.\n'
         'RUN_DIR_CQIG_CTR = run_model(epochs=EPOCHS, force_reload=False, semantic="mlp",\n'
         '                             cqig=True, cqig_norm="layer", cqig_layers="last",\n'
         '                             cqig_lam=%s, cqig_op="%s",\n'
@@ -3792,7 +3792,7 @@ for name, rd, out_tag in RUNS:
     os.system(f"cp {rd}/scores.json {OUT_ROOT}/scores_{out_tag}.json")
 
 # Same scorer, same slices, every arm side by side. The learned-scorer row is the
-# claim; the operator row is what it has to beat with the graph half held fixed.
+# claim; the handcrafted scorer row is what it has to beat with the graph half held fixed.
 rows = [("BGE baseline", f"{S4}/data/metrics_bge_{DATASET}_test.json")]
 rows += [(n, f"{rd}/scores.json") for n, rd, _ in RUNS if rd]
 for tag, p in rows:
@@ -3866,7 +3866,7 @@ Everything needed is already on disk; this cell computes nothing and trains noth
 
 | | graph off | graph on |
 |---|---|---|
-| **operator** | 5d `current` | section 9 |
+| **handcrafted scorer** | 5d `current` | section 9 |
 | **multi-view scorer** | 5d `mlp` | section 9b |
 
 Read the rows for what the graph adds with the scorer held fixed. Read the columns for
@@ -3874,10 +3874,10 @@ what the scorer swap buys with the graph half held fixed. Those are the only two
 contrasts the 2x2 supports, and both are printed as explicit deltas so neither has to be
 eyeballed.
 
-**The operator row is 5d's `current`, not `operator_scorer.py` from 5b.** 5d refits the
-operator's own formula on the same split under the same objective as the multi-view arm,
+**The handcrafted scorer row is 5d's `current`, not `handcrafted_scorer.py` from 5b.** 5d refits the
+handcrafted scorer's own formula on the same split under the same objective as the multi-view arm,
 so the column comparison isolates the architecture. Using 5b would confound it with a
-different loss (operator, not multi-gold-corrected) and a different fit slice, and the
+different loss (handcrafted scorer, not multi-gold-corrected) and a different fit slice, and the
 delta would not be attributable to the scorer.
 
 An arm whose training cell was never run is reported as missing and dropped from the
@@ -4309,7 +4309,7 @@ for k, v in (("__L1__", L1), ("__L2__", L2), ("__L3__", L3)):
     blob = blob.replace(k, v)
 blob = blob.replace("__FOREIGN__", FOREIGN)
 blob = blob.replace("__PROBEDIR__", "" if TOMATO else "{DATASET}/")
-# THE SAME LEGACY RULE, THIRD TIME. operator_scorer.py:279 builds its params filename as
+# THE SAME LEGACY RULE, THIRD TIME. handcrafted_scorer.py:279 builds its params filename as
 #     sfx = ("" if a.dataset == "tomato" else f"_{a.dataset}") + model_slug(a.model)
 # so on TOMATO it writes `operator_params_content-qwen3.json` with NO dataset segment,
 # while the notebook read `operator_params_{DATASET}{OP_SLUG}.json`. Phase 3 then finished
@@ -4355,15 +4355,15 @@ for a, b in (("sir4_cs", DSET),
              # arm-specific build inherited "additive-gate fusion", so a CCMP notebook and
              # a mixture notebook opened with the same sentence and the reader had to find
              # a run_model call forty cells down to tell them apart.
-             ("additive-gate fusion (operator \u2295 v16sc graph)",
+             ('additive-gate fusion (handcrafted scorer ⊕ SciAfford graph)',
               "H3 semantic-prior graph reasoning" if BELIEF else
               ("CCMP over CQIG \u03bb=%s: control vs CCMP" % LAM if LAM_ONLY else
-               "CCMP: control vs contrastive responsibility propagation") if CCMP else
-              "additive-gate fusion (operator \u2295 v16sc graph)"),
+               "CCMP: control vs Contrastive Continuation Message Passing") if CCMP else
+              'additive-gate fusion (handcrafted scorer ⊕ SciAfford graph)'),
              ("Within-domain CS run", "TOMATO-Star run" if TOMATO
               else f"Within-domain {DOMAIN.upper()} run")):
     blob = blob.replace(a, b)
-# The reused fusion implementation predates the Qwen operator. Its executable
+# The reused fusion implementation predates the Qwen handcrafted scorer. Its executable
 # code is encoder-agnostic, but make the generated notebook's documentation
 # describe the components actually supplied above.
 blob = blob.replace("The BGE encoder that produced dense/S/M is frozen",
@@ -4375,7 +4375,7 @@ nb = json.loads(blob)
 # the literal character cannot match.
 if NOENT:
     _h = "".join(nb["cells"][0]["source"])
-    _old = "additive-gate fusion (operator ⊕ v16sc graph)"
+    _old = 'additive-gate fusion (handcrafted scorer ⊕ SciAfford graph)'
     assert _old in _h, "the ladder heading is not where this expected it"
     # The corpus table quotes the AS-BUILT seed counts, which this notebook no longer
     # runs on. Leaving them would put 76.9 at the top of a run whose whole point is 35.7.
@@ -4425,10 +4425,10 @@ if CCMP and not TOMATO:
     # entry for it has therefore never fired -- the BELIEF build is mistitled for the same
     # reason, which is a separate bug this does not touch.
     _h = "".join(nb["cells"][0]["source"])
-    _old = "additive-gate fusion (operator ⊕ v16sc graph)"
+    _old = 'additive-gate fusion (handcrafted scorer ⊕ SciAfford graph)'
     _new = ("CCMP over CQIG λ=%s: control vs CCMP" % LAM) if LAM_ONLY else \
            ("CCMP and CQIG, each against one shared control" if CQIG_ARM else
-            "CCMP vs control (contrastive responsibility propagation)")
+            "CCMP vs control (Contrastive Continuation Message Passing)")
     assert _old in _h, "the ladder heading is not where this expected it"
     nb["cells"][0]["source"] = _h.replace(_old, _new).splitlines(True)
 

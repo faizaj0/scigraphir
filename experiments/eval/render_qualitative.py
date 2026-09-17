@@ -2,10 +2,10 @@
 render_qualitative.py -- turn interpret_paths.py outputs into the qualitative section's
 markdown and LaTeX: per example, the query, the gold inspiration, every system's rank of it,
 the scorer's best-matching hypothetical-answer views, and the top reasoning paths on the
-frame graph (with the CCMP gate along each hop) next to the top paths on the OpenIE graph.
+SciAfford graph (with the CCMP gate along each hop) next to the top paths on the OpenIE graph.
 
     python3 eval/render_qualitative.py --picks picks.json --docs documents.json \\
-        --paths frame=paths_frame.json --paths openie=paths_openie.json [--paths control=...] \\
+        --paths sciafford=paths_frame.json --paths openie=paths_openie.json [--paths control=...] \\
         --n 3 --out-md qualitative.md --out-tex qualitative_paths.tex
 """
 from __future__ import annotations
@@ -20,8 +20,8 @@ SYS_LABEL = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Emb.", "specter
              "openie": "+ Graph (OpenIE)", "control": "+ Graph (SciGraph)", "scigraphir": "+ Graph + CCMP (SciGraphIR)",
              "graph_ch": "graph channel alone (inside SciGraphIR)", "scorer_ch": "scorer channel (inside SciGraphIR)",
              "dense_ch": "Qwen3 cosine (inside SciGraphIR)"}
-ARM_LABEL = {"frame": "SciGraph frame graph (+ CCMP)", "control": "SciGraph frame graph (no CCMP, separate control weights)",
-             "frame_nogate": "SciGraph frame graph (same weights, CCMP gate off at inference)",
+ARM_LABEL = {"frame": 'SciAfford graph (+ CCMP)', "control": 'SciAfford graph (no CCMP, separate control weights)',
+             "frame_nogate": 'SciAfford graph (same weights, CCMP gate off at inference)',
              "openie": "OpenIE entity graph"}
 
 
@@ -69,7 +69,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--picks", required=True)
     ap.add_argument("--docs", required=True)
-    ap.add_argument("--paths", action="append", default=[], help="arm=json (frame|frame_nogate|control|openie), repeatable")
+    ap.add_argument("--paths", action="append", default=[], help="arm=json (sciafford|sciafford_nogate|control|openie), repeatable")
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--paths-per-arm", type=int, default=2)
     ap.add_argument("--out-md", required=True)
@@ -81,6 +81,7 @@ def main() -> int:
     arms = {}
     for spec in a.paths:
         name, path = spec.split("=", 1)
+        name = {"sciafford": "frame", "sciafford_nogate": "frame_nogate"}.get(name, name)
         if os.path.exists(path):
             arms[name] = {r["id"]: r for r in json.load(open(path))}
     systems = picks["systems"]
@@ -135,7 +136,7 @@ def main() -> int:
                    f"{{\\scriptsize (rank: {tex_escape(ranks)})}} & {pth} \\\\\n\\addlinespace")
     tex.append("\\bottomrule\n\\end{tabular}")
     tex.append("\\caption{Path interpretations on SIR-4. For each cross-field query, the highest-weighted path from a query "
-               "seed frame to the gold paper under the trained reasoner (gradient beam search over per-layer edge weights, "
+               'seed node to the gold paper under the trained reasoner (gradient beam search over per-layer edge weights, '
                "as in NBFNet and GFM-RAG); numbers in parentheses are the CCMP gate applied to each hop's sender "
                "(1.0 = frontier mean; $>$1 amplified, $<$1 suppressed). Ranks are the position of the gold in each "
                "system's ranking.}\n\\label{tab:path-interpretations}\n\\end{table}")

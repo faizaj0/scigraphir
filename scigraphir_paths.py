@@ -7,9 +7,10 @@ sir4_matsci, mir, researchbench) and resolves corpora, graphs and caches through
 here, so two corpora can never share a cache file. Caches are keyed by dataset and split:
 
     corpus_dir("test")           ->  retriever/data/sir4_cs_test
-    graph_dir("test")            ->  retriever/data/sir4_cs_test_v16sc
-    frames_path("doc", "test")   ->  sciafford/cache/sir4_cs/frames_doc_test.jsonl
-    probes_path("test")          ->  retriever/probes/cache/sir4_cs/probes_test.jsonl
+    graph_dir("test", "hyb")     ->  retriever/data/sir4_cs_test_hyb
+    graph_dir("test", "v16sc")   ->  retriever/data/sir4_cs_test_v16sc
+    affordances_path("doc", "test")   ->  sciafford/cache/sir4_cs/frames_doc_test.jsonl
+    answers_path("test")          ->  retriever/probes/cache/sir4_cs/probes_test.jsonl
     emb_dir()                    ->  outputs/caches/op_emb/sir4_cs
 
 The repository root is SCIGRAPHIR_ROOT when set (Colab unpacks the bundle to
@@ -23,7 +24,7 @@ Usage in a script:
 
     import os, sys
     sys.path.insert(0, os.environ.get("SCIGRAPHIR_ROOT") or REPO_ROOT)
-    from scigraphir_paths import add_dataset_arg, set_dataset, corpus_dir, frames_path
+    from scigraphir_paths import add_dataset_arg, set_dataset, corpus_dir, affordances_path
 
     set_dataset(args.dataset)
     raw = corpus_dir(args.split)              # .../retriever/data/sir4_cs_test
@@ -77,7 +78,10 @@ def corpus_dir(split: str) -> str:
 
 
 def graph_name(split: str, suffix: str = "v16sc") -> str:
-    """Directory name of a built graph, e.g. `sir4_cs_train_v16sc`."""
+    """Graph directory name. Pass suffix="hyb" for the default full-method graph.
+
+    The argument default remains "v16sc" for component builders and older callers.
+    """
     return f"{DATASET}_{split}_{suffix}"
 
 
@@ -88,13 +92,11 @@ def graph_dir(split: str, suffix: str = "v16sc") -> str:
 # --------------------------------------------------------------------------
 # caches
 # --------------------------------------------------------------------------
-def frames_path(side: str, split: str) -> str:
-    """Extracted-frame cache. `side` is "doc" or "query".
+def affordances_path(side: str, split: str) -> str:
+    """Cache of affordance representations; `side` is "doc" or "query".
 
-    TOMATO's test frames are stored WITHOUT a split suffix and its train frames
-    WITH one -- an asymmetry from when only a test split existed. That is
-    preserved exactly for TOMATO and dropped for every other dataset, where the
-    split is always in the name.
+    Existing filenames are retained. TOMATO test files have no split suffix;
+    TOMATO training files and every other dataset include the split.
     """
     root = _scoped(f"{SCIAFFORD}/cache")
     if is_legacy() and split == "test":
@@ -112,8 +114,8 @@ def graph_cache_dir() -> str:
     return _scoped(f"{SCIAFFORD}/cache")
 
 
-def probes_path(split: str) -> str:
-    """LLM probe cache used by the operator's S and M terms."""
+def answers_path(split: str) -> str:
+    """Hypothetical-answer cache shared by semantic scoring and graph seeding."""
     return f"{_scoped(f'{RETRIEVER}/probes/cache')}/probes_{split}.jsonl"
 
 
@@ -138,3 +140,8 @@ def add_dataset_arg(ap) -> None:
 def banner() -> str:
     return (f"[scigraphir_paths] dataset={DATASET} "
             f"{'(legacy TOMATO paths)' if is_legacy() else '(scoped caches)'}")
+
+
+# Compatibility aliases for notebooks exported before the terminology update.
+frames_path = affordances_path
+probes_path = answers_path

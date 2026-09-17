@@ -33,14 +33,14 @@ What makes an example "best" (documented so the caption can say it):
              + 2 * share of typed relations on the best path          (mechanism, not co-mention)
              + 0.5 if the best path has 2..4 hops, - 0.5 per hop past 4  (readable)
              - 1.0 per intermediate paper on the best path            (paper -> entity -> paper hopping)
-             - 1.0 per domain-hub node on the best path               (frame graph failure signature)
+             - 1.0 per domain-hub node on the best path               (SciAfford graph failure signature)
              + 0.5 * log10(weight of the best path), clipped to [-3, 2] (a strong route, not beam noise)
   diversity  at most one example per query in the ranked list.
 
 usage:
   table4.py --dataset sir4_cs --queries raw/test.json --docs raw/documents.json \\
-      --edges <frame graph>/processed/stage1/edges.csv [--quartet eval.json] \\
-      --arm "OpenIE graph=hops_t4_openie.json" --arm "frame graph + CCMP=hops_t4_frame_ccmp.json" \\
+      --edges <SciAfford graph>/processed/stage1/edges.csv [--sir4 eval.json] \\
+      --arm "OpenIE graph=hops_t4_openie.json" --arm "SciAfford graph + CCMP=hops_t4_frame_ccmp.json" \\
       [--pred qwen3=predictions_qwen3_sir4_cs_test.json ...] --out outputs/scan/sir4_cs/table4_sir4_cs
 """
 from __future__ import annotations
@@ -53,7 +53,7 @@ import re
 from collections import defaultdict
 
 BIG = 10 ** 6
-# relations that only say "co-occurs" (OpenIE) or "same field" (frame graph): not a mechanism
+# relations that only say "co-occurs" (OpenIE) or "same field" (SciAfford graph): not a mechanism
 UNTYPED = {"is_mentioned_in", "equivalent", "in_field", "mentions"}
 SYS_LABEL = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Emb.", "specter2": "SPECTER2", "scincl": "SciNCL",
              "reasonir": "ReasonIR-8B", "dense": "Qwen3 cosine rank", "scorer": "semantic scorer", "graph": "graph channel",
@@ -188,7 +188,7 @@ def load_arm(path: str) -> dict:
 
 
 def doc_domains(edges_csv: str | None) -> dict:
-    """document id -> domain names from the frame graph's in_field edges (a field label when QUARTET is absent)."""
+    """document id -> domain names from the SciAfford graph's in_field edges (a field label when SIR-4 is absent)."""
     dom = defaultdict(list)
     if not edges_csv or not os.path.exists(edges_csv):
         return dom
@@ -200,7 +200,7 @@ def doc_domains(edges_csv: str | None) -> dict:
     return dom
 
 
-def quartet_fields(path: str | None) -> dict:
+def sir4_fields(path: str | None) -> dict:
     out = {}
     if not path or not os.path.exists(path):
         return out
@@ -275,7 +275,7 @@ def main() -> int:
     ap.add_argument("--queries"); ap.add_argument("--docs"); ap.add_argument("--edges", default=None)
     ap.add_argument("--arm", action="append", default=[], help="label=hops json; the first is the showcased model")
     ap.add_argument("--pred", action="append", default=[], help="name=predictions json of a baseline (rank of the gold)")
-    ap.add_argument("--quartet", default=None, help="QUARTET eval.json for the field pair of each gold (SIR-4 only)")
+    ap.add_argument("--sir4", "--quartet", dest='sir4', default=None, help="SIR-4 eval.json for the field pair of each gold (SIR-4 only)")
     ap.add_argument("--stratum", default="auto", help="cross | same | any | auto (cross when the dataset has it)")
     ap.add_argument("--min-dense", type=int, default=25); ap.add_argument("--max-graph", type=int, default=5)
     ap.add_argument("--max-fused", type=int, default=10)
@@ -319,10 +319,10 @@ def main() -> int:
         if os.path.exists(path):
             preds[nm] = {r["id"]: ranked_docs(r) for r in json.load(open(path))}
     dom = doc_domains(a.edges)
-    qf = quartet_fields(a.quartet)
+    qf = sir4_fields(a.sir4)
     if a.dataset.startswith("sir4_") and not qf:
         raise FileNotFoundError(
-            "SIR-4 qualitative reporting requires the official QUARTET eval.json via --quartet; "
+            "SIR-4 qualitative reporting requires the official SIR-4 eval.json via --sir4; "
             "refusing to infer cross-field labels from graph domain nodes."
         )
     strata_present = ({m.get("stratum") for m in qf.values() if m.get("stratum")}
@@ -362,11 +362,11 @@ def main() -> int:
                             if not (qf.get(k, {}).get("stratum") and qf.get(k, {}).get("field_pair"))]
         if missing_official:
             print(f"[table4] omitted {len(missing_official)} query-gold pairs without complete official "
-                  "QUARTET stratum/field_pair metadata")
+                  "SIR-4 stratum/field_pair metadata")
             missing_official = set(missing_official)
             keys = [k for k in keys if k not in missing_official]
             if not keys:
-                raise ValueError("No interpreted query-gold pair has complete official QUARTET metadata.")
+                raise ValueError("No interpreted query-gold pair has complete official SIR-4 metadata.")
     cands, n_elig = [], 0
     for (qid, gold) in keys:
         recs = [(lab, tab.get((qid, gold))) for lab, tab in arms]

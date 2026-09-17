@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 route_circles_tikz.py -- the routes SciGraphIR takes for one (query, gold) pair, drawn as a graph of circles:
-q grounds into a dashed panel holding EVERY seed frame of the query as a small dot coloured by type (the seeds
+q grounds into a dashed panel holding EVERY seed node of the query as a small dot coloured by type (the seeds
 that start a drawn route are enlarged and numbered); each route runs left to right as circles coloured by node
 type with its label underneath and the relation on the arrow; the OpenIE entity graph's route (or "no route")
 is the last row; i* is the endpoint. Text cards with numbered spans on top, ranks in the legend line.
@@ -13,10 +13,10 @@ TYPE_COL = {"function": "cFun", "finding": "cFin", "method": "cMet", "mechanism"
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def tex(s):
@@ -45,15 +45,15 @@ def main():
     ap.add_argument("--field-q", default=""); ap.add_argument("--field-d", default=""); ap.add_argument("--year", default=None)
     ap.add_argument("--span", action="append", default=[]); ap.add_argument("--no-openie", action="store_true")
     ap.add_argument("--candidates", default=None); ap.add_argument("--compile", action="store_true"); ap.add_argument("--max-hops", type=int, default=6)
-    ap.add_argument("--docs", default=None, help="documents.json (default: the CARGO tree)"); ap.add_argument("--queries", default=None, help="test.json")
-    ap.add_argument("--quartet", default=None, help="QUARTET eval.json for the field pair / year (default: the CARGO tree)")
+    ap.add_argument("--docs", default=None, help="documents.json (default: the SciGraphIR tree)"); ap.add_argument("--queries", default=None, help="test.json")
+    ap.add_argument("--sir4", "--quartet", dest='sir4', default=None, help="SIR-4 eval.json for the field pair / year (default: the SciGraphIR tree)")
     ap.add_argument("--no-strip", action="store_true", help="omit panel (c), the rank strip; ranks then belong in the path table (route_table_tex.py)")
-    ap.add_argument("--arm", default="auto", help="SciAffordGraph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
+    ap.add_argument("--arm", default="auto", help="SciAfford graph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
     a = ap.parse_args(); q, g = a.pair.split("=", 1); D = a.dataset
     docs = json.load(open(a.docs or f"{R}/retriever/data/{D}_test/raw/documents.json"))
     queries = {x["id"]: x for x in json.load(open(a.queries or f"{R}/retriever/data/{D}_test/raw/test.json"))}
     qf = {}
-    qp = a.quartet or f"{R}/benchmark/data.nosync/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
+    qp = a.sir4 or f"{R}/sir-4/data/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
     if os.path.exists(qp):
         for x in json.load(open(qp)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qf[(x["id"], d)] = m
@@ -65,7 +65,7 @@ def main():
                 for t in r["targets"]:
                     if t["doc"] == g: return r, t
         return None
-    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAffordGraph arm:", ARM, f"({ARMLAB})")
+    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAfford graph arm:", ARM, f"({ARMLAB})")
     on = load(ARM); off = load(f"{ARM}_off"); oie = load("openie")
     assert on, "pair not in the CCMP hops file"
     def simple(p, seeds):
@@ -194,7 +194,7 @@ def main():
     # ---- seed counts and the other entity seeds, under the band
     n = len(seeds); frame_rows = [ri for ri, (_, p, gr) in enumerate(rows, 1) if not gr]
     ent_row = len(rows) if (rows and rows[-1][2]) else (nrows if oie_none else None)
-    foot = "frames %d/%d" % (len(frame_rows), n)
+    foot = "affordance nodes %d/%d" % (len(frame_rows), n)
     if ent_row:
         oseeds = list(dict.fromkeys(oie[0]["seeds"])); used = rows[-1][1]["hops"][0]["head"] if (rows and rows[-1][2]) else None
         others = [x for x in oseeds if x != used][:3]; more = len(oseeds) - len(others) - (1 if used else 0)

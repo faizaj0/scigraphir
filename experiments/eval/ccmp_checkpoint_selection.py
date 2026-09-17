@@ -68,7 +68,7 @@ def select_checkpoint(dataset, spec, drive, data_root, prefer_merged=True):
     available = merged_candidates(dataset, drive)
     if prefer_merged and available:
         ckpt, graph, family, name, skey = available[0], f"{dataset}_test_hyb", "merged", "merged_ccmp", "field"
-        reason = "Merged-graph CCMP checkpoint available; preferred over frame-only checkpoint."
+        reason = 'Merged-graph CCMP checkpoint available; preferred over affordance representation-only checkpoint.'
         meta_path = ckpt.parent / "arm.json"
         metadata = json.loads(meta_path.read_text()) if meta_path.is_file() else {}
         expected = {"field": dataset.removeprefix("sir4_"), "graph": "hyb", "valid": graph,
@@ -87,7 +87,7 @@ def select_checkpoint(dataset, spec, drive, data_root, prefer_merged=True):
     else:
         arms = [a for a in spec["arms"] if a[0] == "frame_ccmp"]
         if len(arms) != 1:
-            raise ValueError(f"{dataset}: expected one frame CCMP fallback specification")
+            raise ValueError(f"{dataset}: expected one affordance representation CCMP fallback specification")
         name, relative, _, skey, _ = arms[0]
         relative = relative if isinstance(relative, list) else [relative]
         ckpt = next((Path(drive) / r / "model_best.pth" for r in relative
@@ -97,8 +97,8 @@ def select_checkpoint(dataset, spec, drive, data_root, prefer_merged=True):
             raise FileNotFoundError(f"{dataset}: neither a merged nor fallback CCMP checkpoint is available")
         graph, family, metadata = spec["frame"], "frame", {}
         semantic_specs = spec["sem"]
-        reason = ("FALLBACK: no merged-graph CCMP checkpoint found under outputs/sir4_hyb; using the previous frame checkpoint."
-                  if prefer_merged else "Frame checkpoint explicitly requested (PREFER_MERGED=False).")
+        reason = ('FALLBACK: no merged-graph CCMP checkpoint found under outputs/sir4_hyb; using the previous affordance representation checkpoint.'
+                  if prefer_merged else 'Affordance representation checkpoint explicitly requested (PREFER_MERGED=False).')
     ensure_graph(dataset, graph, family, drive, data_root)
     return json.loads(json.dumps({"dataset": dataset, "family": family, "arm": name, "checkpoint": str(ckpt),
             "graph": graph, "scorer_key": skey, "semantic_specs": semantic_specs,

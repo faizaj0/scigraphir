@@ -55,7 +55,7 @@ For each existing query → target-paper example this notebook
 
 Δ_P is a *path-sender gate effect*, not the exclusive contribution of the path: senders act on other routes too, and overlapping paths must not be summed. The attribution column (mean edge gradient) is independent of the gates. A higher target score does not necessarily improve its rank; ranks are reported separately.
 
-`PREFER_MERGED = False` selects the frame-graph checkpoints that produced the existing examples (`outputs/sir4_zeroshot/scigraphir_<pair>_qwenmlp_ccmp_e10_b2` on `<dataset>_test_v16sc`). Both float32 and bfloat16 are run from fresh loads; report float32 and use bfloat16 only to confirm that the stored 8 Sep paths reproduce. Inference and gradients only; no training. All source files are visible `%%writefile` cells.
+`PREFER_MERGED = False` selects the SciAfford graph checkpoints that produced the existing examples (`outputs/sir4_zeroshot/scigraphir_<pair>_qwenmlp_ccmp_e10_b2` on `<dataset>_test_v16sc`). Both float32 and bfloat16 are run from fresh loads; report float32 and use bfloat16 only to confirm that the stored 8 Sep paths reproduce. Inference and gradients only; no training. All source files are visible `%%writefile` cells.
 """
 
 READOUT = r"""### Reading the result

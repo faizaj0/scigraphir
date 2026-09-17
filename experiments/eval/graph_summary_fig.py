@@ -4,11 +4,11 @@ graph_summary_fig.py -- the graph reasoner across every dataset in one figure (l
 
 Rows: cross-field golds (top) and same-field golds (bottom). Columns:
   (1) reach against route length: P(graph-channel rank <= K | length of the top route)   -> reach is a distance effect, everywhere
-  (2) frame graph minus entity graph: difference in the share of golds the two graph reasoners rank within k (log k)
+  (2) SciAfford graph minus entity graph: difference in the share of golds the two graph reasoners rank within k (log k)
   (3) CCMP gate on minus gate off, same weights: difference in the share of golds the graph channel ranks within k
 
 Inputs per dataset: results/qualitative/drive_scan_<ds>/hops_frame_ccmp.json, hops_frame_ccmp_off.json, hops_openie.json;
-per-gold QUARTET strata for the SIR-4 fields (cs_test_final, <field>_test_low), query strata for TOMATO / MIR.
+per-gold SIR-4 strata for the SIR-4 fields (cs_test_final, <field>_test_low), query strata for TOMATO / MIR.
 
     python3 eval/graph_summary_fig.py --out ../figures/fig_graph_reasoning_summary
 """
@@ -23,7 +23,7 @@ INK, MUTED, RULE = "#262a30", "#7c828c", "#ced2da"
 DATASETS = [("sir4_cs", "SIR-4 CS", "#2a69a0"), ("sir4_biology", "SIR-4 Biology", "#208070"), ("sir4_physics", "SIR-4 Physics", "#705296"),
             ("sir4_matsci", "SIR-4 MatSci", "#a47822"), ("tomato", "TOMATO", "#c44e52"), ("mir", "MIR", "#6e747e")]
 _QC = f"{S4}/results/qualitative/quartet_cache"
-QUARTET = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
+SIR4_EXPORTS = {"sir4_cs": f"{_QC}/cs_test_final.eval.json", **{f"sir4_{f}": f"{_QC}/{f}_test_low.eval.json" for f in ("biology", "physics", "matsci")}}
 KS = [1, 2, 3, 5, 10, 20, 50, 100, 200, 500, 1000]
 MARK = {"sir4_cs": "o", "sir4_biology": "s", "sir4_physics": "^", "sir4_matsci": "D", "tomato": "v", "mir": "P"}
 
@@ -45,10 +45,10 @@ def openie_path(d, prefix="hops_"):
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def load(path, with_paths=False):
@@ -85,9 +85,9 @@ def main():
         F = load(f"{d}/hops_{ARM}.json", with_paths=True)
         O = load(f"{d}/hops_{ARM}_off.json") if os.path.exists(f"{d}/hops_{ARM}_off.json") else {}
         _ep = openie_path(d); E = load(_ep) if _ep else {}
-        if ds in QUARTET and os.path.exists(QUARTET[ds]):
+        if ds in SIR4_EXPORTS and os.path.exists(SIR4_EXPORTS[ds]):
             qz = {}
-            for x in json.load(open(QUARTET[ds])):
+            for x in json.load(open(SIR4_EXPORTS[ds])):
                 for doc, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], doc)] = m.get("stratum")
             for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
         for ri, s in enumerate(("cross", "same")):
@@ -100,7 +100,7 @@ def main():
                 ys.append(100.0 * sum(F[k]["rank"]["graph"] <= K for k in ks_) / len(ks_) if len(ks_) >= 5 else float("nan"))
             ax = axes[ri][0]; ln, = ax.plot(hs, ys, color=col, marker=MARK[ds], ms=4.2, lw=1.5, label=label); handles[ds] = ln
             summary[f"{ds}/{s}/reach_by_hops"] = dict(zip(map(str, hs), ys))
-            # (2) frame graph minus entity graph
+            # (2) SciAfford graph minus entity graph
             ke = [k for k in keys if k in E and E[k]["rank"].get("graph")]
             if ke:
                 diff = [f - e for f, e in zip(share([F[k]["rank"]["graph"] for k in ke], KS), share([E[k]["rank"]["graph"] for k in ke], KS))]
@@ -114,7 +114,7 @@ def main():
         ax = axes[ri][0]; ax.set_xticks(range(1, 7)); ax.set_ylim(0, 102)
         ax.set_xlabel("length of the top route to the gold (hops)", fontsize=8, color=INK); ax.set_ylabel(f"% of golds with graph rank $\\leq$ {K}", fontsize=8, color=INK)
         ax.set_title(f"({'ad'[ri]}) {s}-field golds: reach against route length", fontsize=8.6, color=INK, loc="left")
-        for ci, (ttl, yl) in enumerate([("frame graph $-$ entity graph", "difference in % of golds within k\n(SciAffordGraph $-$ OpenIE graph, points)"),
+        for ci, (ttl, yl) in enumerate([('SciAfford graph $-$ entity graph', "difference in % of golds within k\n(SciAfford graph $-$ OpenIE graph, points)"),
                                         ("CCMP gate on $-$ gate off (same weights)", "difference in % of golds within k\n(gate on $-$ gate off, points)")], start=1):
             ax = axes[ri][ci]; ax.set_xscale("log"); ax.axhline(0, color=INK, lw=0.8)
             ax.set_xlabel("rank k of the gold (log scale)", fontsize=8, color=INK); ax.set_ylabel(yl, fontsize=7.8, color=INK)

@@ -259,10 +259,10 @@ class GraphReasoner(QueryGNN):
         question_emb = batch["question_embeddings"]
         question_entities_mask = batch["start_nodes_mask"]
 
-        # --- optional: down-weight hub seed frames by 1/degree^p of their graph node ---
-        # Graph-intrinsic anti-hub prior on the restart distribution. Depends ONLY on the
+        # --- optional: down-weight hub seed nodes by 1/degree^p of their graph node ---
+        # Graph-intrinsic specificity correction prior on the restart distribution. Depends ONLY on the
         # fixed corpus (node degree), so it is single-query deployable — no cross-query info.
-        # Redistributes each query's seed mass away from generic (high-degree) frames toward
+        # Redistributes each query's seed mass away from generic (high-degree) affordance representations toward
         # discriminative ones; per-row total mass is preserved so only the *shape* changes.
         # Off by default; enable with env SEED_DEGREE_WEIGHT (the exponent p, e.g. "1.0").
         _sdw = os.environ.get("SEED_DEGREE_WEIGHT")

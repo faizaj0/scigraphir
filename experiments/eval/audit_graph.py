@@ -1,5 +1,5 @@
 """
-audit_graph.py -- step 10. Check a built v16sc graph before anything is trained on it.
+audit_graph.py -- step 10. Check a built SciAfford graph before anything is trained on it.
 
 The builder prints node and edge counts and nothing else, so every property that
 actually decides whether training is meaningful is currently unobserved. The one
@@ -13,7 +13,7 @@ Sections
   C reachability can a gold be reached from the query's seeds in one hop
   D hubs         canonical nodes that seed a large share of all queries
   E spread       distribution of the snap cosine (needs BGE; --spread)
-  F sample       frames + seeds + golds dumped to a file for hand reading
+  F sample       affordance representations + seeds + golds dumped to a file for hand reading
 
 Exit status is 1 if a HARD check fails: dangling edges, or any zero-seed query.
 Those two make the training run wrong rather than merely worse.
@@ -36,12 +36,12 @@ from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)                                  # experiments/
-CARGO = os.path.dirname(ROOT)
-sys.path.insert(0, CARGO)
-from scigraphir_paths import banner, corpus_dir, frames_path, graph_name, set_dataset  # noqa: E402
+REPO_ROOT = os.path.dirname(ROOT)
+sys.path.insert(0, REPO_ROOT)
+from scigraphir_paths import banner, corpus_dir, affordances_path, graph_name, set_dataset  # noqa: E402
 
 csv.field_size_limit(10 ** 8)
-KG = f"{CARGO}/retriever"
+KG = f"{REPO_ROOT}/retriever"
 SEED_T = ("task", "function", "method", "limitation")
 
 
@@ -64,7 +64,7 @@ def main() -> int:
     ap.add_argument("--dataset", default=os.environ.get("SCIGRAPHIR_DATASET", "tomato"))
     ap.add_argument("--split", required=True, choices=["train", "test"])
     ap.add_argument("--suffix", default="v16sc")
-    ap.add_argument("--sample", type=int, default=30, help="frames dumped for hand reading")
+    ap.add_argument("--sample", type=int, default=30, help='affordance representations dumped for hand reading')
     ap.add_argument("--spread", action="store_true",
                     help="also report the snap-cosine distribution (loads BGE)")
     ap.add_argument("--spread-queries", type=int, default=300)
@@ -152,7 +152,7 @@ def main() -> int:
 
     # ---- C. reachability ----------------------------------------------
     # One hop OUT of a seed. A gold reachable this way can be promoted by the
-    # graph channel; one that is not can only ever be found by the operator.
+    # graph channel; one that is not can only ever be found by the handcrafted scorer.
     print("\n[C] reachability (gold adjacent to a seed node)")
     nbr = defaultdict(set)
     for s, _, t in edges:
@@ -177,7 +177,7 @@ def main() -> int:
     print(f"  queries with >=1 gold reachable: {hit_any:,} ({pct(hit_any, n)})")
     print(f"  queries with ALL golds reachable: {hit_all:,} ({pct(hit_all, n)})")
     print(f"  golds reachable: {gold_hit:,} of {gold_tot:,} ({pct(gold_hit, gold_tot)})")
-    print("  (an unreachable gold is invisible to the graph channel; the operator "
+    print('  (an unreachable gold is invisible to the graph channel; the handcrafted scorer '
           "can still rank it)")
 
     # ---- D. hub seeds --------------------------------------------------
@@ -205,8 +205,8 @@ def main() -> int:
         except Exception as e:                                    # noqa: BLE001
             print(f"  skipped: {e}")
         else:
-            qf = {json.loads(l)["id"]: (json.loads(l).get("frame") or {})
-                  for l in open(frames_path("query", a.split))}
+            qf = {json.loads(l)["id"]: (json.loads(l).get("affordance", json.loads(l).get("frame")) or {})
+                  for l in open(affordances_path("query", a.split))}
             samp = random.sample(queries, min(a.spread_queries, len(queries)))
             pairs = []
             for q in samp:
@@ -249,15 +249,15 @@ def main() -> int:
     # ---- F. hand-reading sample ---------------------------------------
     out = f"{ROOT}/data/audit_{a.dataset}_{a.split}_sample.txt"
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    qf = {json.loads(l)["id"]: (json.loads(l).get("frame") or {})
-          for l in open(frames_path("query", a.split))}
-    df = {json.loads(l)["id"]: (json.loads(l).get("frame") or {})
-          for l in open(frames_path("doc", a.split))}
+    qf = {json.loads(l)["id"]: (json.loads(l).get("affordance", json.loads(l).get("frame")) or {})
+          for l in open(affordances_path("query", a.split))}
+    df = {json.loads(l)["id"]: (json.loads(l).get("affordance", json.loads(l).get("frame")) or {})
+          for l in open(affordances_path("doc", a.split))}
     with open(out, "w") as f:
         for q in random.sample(queries, min(a.sample, len(queries))):
             f.write("=" * 78 + f"\n{q['id']}   stratum={q.get('stratum')}\n")
             f.write(f"Q: {(q.get('question') or '')[:600]}\n\n")
-            f.write("query frame:\n" + json.dumps(qf.get(q["id"], {}), indent=1) + "\n\n")
+            f.write('problem requirement representations:\n' + json.dumps(qf.get(q["id"], {}), indent=1) + "\n\n")
             f.write("seeds:\n")
             for t, v in sorted((q.get("start_nodes") or {}).items()):
                 f.write(f"  {t}: {v}\n")
@@ -265,11 +265,11 @@ def main() -> int:
             for g in (q.get("supporting_documents") or []):
                 f.write(f"  {g}  in_graph={g in docs}\n")
                 f.write(f"    text : {(corpus.get(g) or '')[:220]}\n")
-                f.write(f"    frame: {json.dumps(df.get(g, {}))[:400]}\n")
+                f.write(f"    affordance: {json.dumps(df.get(g, {}))[:400]}\n")
             f.write("\n")
     print(f"\n[F] {min(a.sample, len(queries))} cases -> {out}")
     print("    read 30 to 50 of these by hand; nothing else in this report "
-          "catches a frame that is fluent and wrong")
+          'catches a affordance representation that is fluent and wrong')
 
     if hard_fail:
         print("\nHARD FAILURES:")

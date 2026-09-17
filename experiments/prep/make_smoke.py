@@ -9,7 +9,7 @@ SILENT, not loud:
     vanishes from the run. The final number is then computed over fewer
     queries than you think, and nothing says so.
   * a stale cache from another corpus loads if the row count happens to match.
-  * frames come back empty or malformed for a slice of documents.
+  * affordance representations come back empty or malformed for a slice of documents.
 
 None of those raise. All three are cheap to catch at 50 queries and expensive
 to discover after 30,881 LLM calls.
@@ -34,8 +34,8 @@ import random
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-KG_DATA = f"{CARGO}/retriever/data"
+REPO_ROOT = os.path.dirname(ROOT)
+KG_DATA = f"{REPO_ROOT}/retriever/data"
 
 
 def carve(src_dir: str, split: str, n_queries: int, n_corpus: int, seed: int):

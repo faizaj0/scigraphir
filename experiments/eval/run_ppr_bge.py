@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(KG))
 
 from scigraphir_paths import corpus_dir, emb_dir, set_dataset  # noqa: E402
-from eval.operator_scorer import BGE_QI, cached_encode  # noqa: E402
+from eval.handcrafted_scorer import BGE_QI, cached_encode  # noqa: E402
 
 
 KS = (1, 5, 10, 100)
@@ -177,7 +177,7 @@ def main() -> int:
             x = a.alpha * restart + (1.0 - a.alpha) * (x @ transition)
         ppr_scores[start:start + len(batch)] = x[:, graph_doc_rows]
 
-    # BGE uses exactly the same encoder/instruction as the dense operator arm.
+    # BGE uses exactly the same encoder/instruction as the dense handcrafted scorer arm.
     from sentence_transformers import SentenceTransformer
     import torch
 

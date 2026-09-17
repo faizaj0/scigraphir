@@ -5,7 +5,7 @@ WHY A SEPARATE BUILDER, when build_notebook.py's own doctrine says not to fork.
 That doctrine is about the FUSION notebook: one generator so the engine, the loss
 and the arm definitions cannot drift into a stale copy. This notebook shares none
 of that. No engine, no graph, no reasoner, no fusion, no training, no Qwen3
-operator fit. It reads a corpus and ranks it. The only thing it has in common is
+handcrafted scorer fit. It reads a corpus and ranks it. The only thing it has in common is
 score_sir4.py, which it shells out to exactly like every other arm does.
 
 WHAT IT PRODUCES. all / same / cross for every baseline, through the SAME scorer
@@ -29,12 +29,12 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-FORK = f"{CARGO}/retriever/gfm-rag"
+REPO_ROOT = os.path.dirname(ROOT)
+FORK = f"{REPO_ROOT}/retriever/gfm-rag"
 # THE SAME SOURCE build_notebook.py READS. The engine install and the Qwen3 fetch are
 # lifted from this notebook rather than retyped, so the two builders cannot drift into
 # different engines: a change there lands in both, or in neither.
-SRC = f"{CARGO}/retriever/train/colab_train_v16sc_fusion_greasoner.ipynb"
+SRC = f"{REPO_ROOT}/retriever/train/colab_train_v16sc_fusion_greasoner.ipynb"
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--dataset", default="tomato")
@@ -42,10 +42,10 @@ ap.add_argument("--out", default=None)
 _a = ap.parse_args()
 DSET = _a.dataset
 # --dataset all: ONE notebook covering every SIR-4 domain. Dense arms loop the domains at
-# runtime; G-Reasoner trains per domain on the existing v16sc graphs; GFM-RAG is a GATED
+# runtime; G-Reasoner trains per domain on the existing SciAfford graphs; GFM-RAG is a GATED
 # section because no SIR-4 domain has the OpenIE entity graph its forward path requires.
 # --dataset mir (8 Sep 2026): the ALL-mode plumbing over the single MIR dataset. G-Reasoner
-# trains on the mir_*_v16sc frame graphs, GFM-RAG is gated on the mir_* OpenIE graph exactly
+# trains on the mir_*_v16sc affordance representation graphs, GFM-RAG is gated on the mir_* OpenIE graph exactly
 # as for SIR-4 (build it with retriever/run_index.sh mir_{train,test}, re-bundle, and
 # the gate opens with no edit). The single-dataset mode is TOMATO-shaped (OpenIE graph names,
 # an entity-node assert) and does not fit MIR, so mir goes through ALL.
@@ -377,7 +377,7 @@ they should be stated as description, not hidden:
 Both are evaluated on the same **document** metrics, so the rows compare directly even
 though the losses sit at different levels of the graph.
 
-Neither uses the operator, the learned scorer, the gate or any fusion. That is the
+Neither uses the handcrafted scorer, the learned scorer, the gate or any fusion. That is the
 point of having them: whatever a fusion arm gains over these rows is what the
 project added. Note the fusion arms run on **v16sc**, so that gain includes the graph
 construction as well as the model. The construction on its own is isolated by the
@@ -627,7 +627,7 @@ cells.append(code(
     "    # trains on nothing. Cheap to check here, invisible if it is not.\n"
     "    assert types.get('entity', 0) > 0 and types.get('document', 0) > 0, (\n"
     "        f'{g} node types are {dict(types)} -- GFM-RAG needs entity + document, so this\\n'\n"
-    "        f'is a frame graph (v16sc-style), not the OpenIE one')\n"
+    "        f'is a SciAfford graph (v16sc-style), not the OpenIE one')\n"
     "    os.makedirs(dst, exist_ok=True)\n"
     "    # SAME FILE when the graph dataset IS the corpus dataset, which is the case now that\n"
     "    # both arms run on tomato_{train,test}: src and dst resolve to one path and\n"
@@ -646,7 +646,7 @@ cells.append(code('''import hashlib   # also imported in section 4; this cell mu
 EPOCHS, BATCH = 10, 2
 
 def run_baseline(config, suffix, epochs=None, batch=None):
-    """Stock upstream model: no operator components, no semantic scorer, no fusion."""
+    """Stock upstream model: no handcrafted scorer components, no semantic scorer, no fusion."""
     epochs, batch = epochs or EPOCHS, batch or BATCH
     run_dir = f"{OUT_ROOT}/{DATASET}_{suffix}"
     # BOTH, not just the checkpoint. Training can save model_best.pth and then die in the
@@ -720,7 +720,7 @@ def run_baseline(config, suffix, epochs=None, batch=None):
     # POPPED, not merely unset. If a fusion notebook ran earlier in this same Colab
     # session these are still in os.environ, and dict(os.environ, ...) would copy them
     # straight into the baseline and quietly stop it being one.
-    for k in ("OPERATOR_COMPONENTS", "OPERATOR_COMPONENTS_TEST", "SEMANTIC_COMPONENTS",
+    for k in ('HANDCRAFTED_COMPONENTS', 'HANDCRAFTED_COMPONENTS_TEST', "SEMANTIC_COMPONENTS",
               "SEMANTIC_COMPONENTS_TEST", "SEMANTIC_CKPT", "SEMANTIC_POPNET",
               "FUSION_OBJECTIVE", "FUSION_ROUTER", "FUSION_GAMMAFIX", "HARDNEG_HUB",
               "HARDNEG_RAND", "HARDNEG_GRAPH", "PER_GOLD", "AUX_W", "SEM_POP_LAMBDA",
@@ -767,7 +767,7 @@ work.
 
 | row | what it is | graph |
 |---|---|---|
-| `ours: multi-view scorer` | the trained sorted-MLP scorer with the joint popularity term, the `mlp` arm of the ablation notebook | none |
+| `ours: multi-view scorer` | the trained sorted-MLP scorer with the joint background matchability term, the `mlp` arm of the ablation notebook | none |
 | `ours: scorer + graph` | the same scorer fused with the graph channel, `z(S_op) + γ_q·relu(z(graph))` | v16sc |
 
 **The difference between these two rows is the graph's whole contribution**, and it is the
@@ -801,7 +801,7 @@ else:
           "  -> run the semantic-scorer section of the ablation notebook, which copies them "
           "to Drive")
 
-# NOT predictions_{TEST}.json. The fusion notebook's TEST is the v16sc dataset
+# NOT predictions_{TEST}.json. The fusion notebook's TEST is the SciAfford dataset
 # ({DATASET}_test_v16sc), not this notebook's {DATASET}_test, so filtering on this
 # notebook's name would match nothing at all. The split is instead pinned by the query-id
 # check below, which is the property that actually matters and catches a dev or train dump
@@ -823,7 +823,7 @@ elif _cand:
 else:
     print(f"  no fusion predictions under {FUSION_ROOT}")
 
-# QUERY IDS, not counts. These files were produced against the v16sc dataset's copy of the
+# QUERY IDS, not counts. These files were produced against the SciAfford dataset's copy of the
 # split while sections 1-4 scored the corpus copy, and a fusion run directory can also hold a
 # dump of a different split. Equal counts would pass a train-vs-test mix-up of the same size;
 # the id sets cannot. A row whose ids disagree is dropped, not reported against the wrong
@@ -1010,7 +1010,7 @@ from stage_sir4 import DOMAINS as _DOMAINS   # noqa: E402
 # sets.json path per dataset, resolved at BUILD time from the same table run_domain.py
 # stages from, so a renamed export shows up here as a build failure and not as a silent
 # CS@5 of zero on Colab.
-SETS_MAP = {f"sir4_{d}": f"benchmark/data/benchmark/{_DOMAINS[d][1]}/sets.json"
+SETS_MAP = {f"sir4_{d}": f"sir-4/data/benchmark/{_DOMAINS[d][1]}/sets.json"
             for d in sorted(_DOMAINS)}
 
 ARMS_CELL = _harvest("QWEN_INSTRUCT")
@@ -1031,13 +1031,13 @@ first time through.
 | lexical | BM25 | CPU, minutes per domain |
 | dense | BGE-large, Qwen3-Embedding, SPECTER2-base, SciNCL | GPU, minutes each per domain |
 | reasoning-trained dense | ReasonIR-8B | GPU, bf16, the slow dense arm |
-| graph | G-Reasoner | **trained here per domain, on the v16sc graphs** — hours each |
+| graph | G-Reasoner | **trained here per domain, on the SciAfford graphs** — hours each |
 | graph | GFM-RAG | **gated**: needs an OpenIE entity graph, which no SIR-4 domain has |
 
 **Why G-Reasoner runs and GFM-RAG does not.** G-Reasoner's dataset class reads any typed
-graph, so it trains on the v16sc frame graphs that already exist for all four domains.
+graph, so it trains on the v16sc affordance representation graphs that already exist for all four domains.
 GFM-RAG v1's forward path ranks `entity` nodes and maps them to documents
-(`GraphIndexDatasetV1`, `target_type: entity`); the v16sc graphs have no entity nodes, and
+(`GraphIndexDatasetV1`, `target_type: entity`); the SciAfford graphs have no entity nodes, and
 SIR-4 has no OpenIE construction. Building one means LLM extraction over every document of
 all four corpora. Until that exists, the GFM-RAG row is reported on TOMATO only, and
 section 5d says so per domain rather than crashing.
@@ -1190,7 +1190,7 @@ ac.append(md("""## 5. Graph baseline — G-Reasoner per domain
 that is all you need today.
 
 G-Reasoner (`GraphReasoner`, stock `sft_training` config) trains from random init on each
-domain's **v16sc graphs**, which the full bundles already carry. First run per domain also
+domain's **SciAfford graphs**, which the full bundles already carry. First run per domain also
 builds the Qwen3 node index (~20-45 min); training is hours per domain at batch 2, and the
 loop is domain-serial with signature skips, so a disconnect costs only the run in flight.
 
@@ -1218,7 +1218,7 @@ ac.append(code(
     "DATA_ROOT = f'{SCIGRAPHIR_ROOT}/retriever/data'\n"
     "ENTITY_OK = {}\n"
     "for ds in DSETS:\n"
-    "    # v16sc graphs: required for the G-Reasoner arm. The loader reads\n"
+    "    # SciAfford graphs: required for the G-Reasoner arm. The loader reads\n"
     "    # {graph}/raw/documents.json, a copy of the corpus INSIDE the graph directory.\n"
     "    for split in ('train', 'test'):\n"
     "        g  = f'{ds}_{split}_v16sc'\n"
@@ -1239,7 +1239,7 @@ ac.append(code(
     "    else:\n"
     "        ENTITY_OK[ds] = False\n"
     "    _e = 'present' if ENTITY_OK[ds] else 'absent -> GFM-RAG gated'\n"
-    "    print(f'  {ds:14} v16sc graphs ok   entity graph: {_e}')"))
+    "    print(f'  {ds:14} SciAfford graphs ok   entity graph: {_e}')"))
 
 ac.append(md("### 5c. Train G-Reasoner on every domain\n"
              "Signature-gated exactly like the single-domain notebook: a finished run of "
@@ -1310,7 +1310,7 @@ def run_baseline(ds, config, suffix, train, valid, epochs=EPOCHS, batch=BATCH):
                # the engine must be importable from /content in a fresh interpreter; the
                # editable install did not guarantee that on the Sept 2026 image
                PYTHONPATH="/content/gfm-rag" + os.pathsep + os.environ.get("PYTHONPATH", ""))
-    for k in ("OPERATOR_COMPONENTS", "OPERATOR_COMPONENTS_TEST", "SEMANTIC_COMPONENTS",
+    for k in ('HANDCRAFTED_COMPONENTS', 'HANDCRAFTED_COMPONENTS_TEST', "SEMANTIC_COMPONENTS",
               "SEMANTIC_COMPONENTS_TEST", "SEMANTIC_CKPT", "SEMANTIC_POPNET",
               "FUSION_OBJECTIVE", "FUSION_ROUTER", "FUSION_GAMMAFIX", "HARDNEG_HUB",
               "HARDNEG_RAND", "HARDNEG_GRAPH", "PER_GOLD", "AUX_W", "SEM_POP_LAMBDA",

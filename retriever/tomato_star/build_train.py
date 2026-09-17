@@ -3,7 +3,7 @@
 
 Each example = one train paper; gold_ids = ALL its found inspirations (multi-gold, as the original bundle).
 
-Run:  cd CARGO && python -m cargo.build_train --n_train 30000 --n_dev 3000
+Run:  python -m retriever.tomato_star.build_train --n_train 30000 --n_dev 3000
 Out:  outputs/caches/train_bundle_big.json , dev_bundle_big.json
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def main(n_train: int, n_dev: int, seed: int = 1):
     print(f"[build_train] train: {len(tb['examples'])} papers / {len(tb['documents'])} docs")
     print(f"[build_train] dev:   {len(db['examples'])} papers / {len(db['documents'])} docs")
     print(f"[build_train] wrote -> {CACHE}/train_bundle_big.json, dev_bundle_big.json")
-    print(f"[build_train] est. CARGO LLM cost on train: probes ~${len(tb['examples'])*0.0008:.0f} "
+    print(f"[build_train] est. SciGraphIR LLM cost on train: hypothetical answers ~${len(tb['examples'])*0.0008:.0f} "
           f"+ triples ~${(len(tb['documents'])+len(tb['examples']))*0.0006:.0f}")
 
 

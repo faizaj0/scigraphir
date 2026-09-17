@@ -1,13 +1,24 @@
-# Precomputed semantic components for the fusion
+# Graph-aligned semantic inputs
 
-The graph reasoner trains on Colab; the semantic branch's inputs are cached once per graph
-so the fusion can recompute the semantic score live with learnable scalars and mine hard
-negatives from it.
+[Retriever](../README.md) · [Semantic code guide](../../docs/README.md#2-multi-view-semantic-scoring)
 
-| Script | Output |
-|---|---|
-| `precompute_operator_components.py --graph <graph> --split <split>` | `data/<graph>/operator_components.npz`: `dense`, `S`, `M` (float16, queries x documents in the graph's `nodes.csv` order), `total_S`, `query_ids`. Read through `OPERATOR_COMPONENTS[_TEST]`. |
-| `precompute_semantic_components.py --dataset <ds> --model <encoder> --graph <graph> --split <split>` | `semantic_components.npz`: the path of the per-answer similarity memmap built by `semantic_scorer.py`, the document embeddings the popularity predictor reads, the answer mask and the corpus-to-graph column permutation. Read through `SEMANTIC_COMPONENTS[_TEST]`. |
+These scripts prepare semantic inputs in the graph's document order. The fusion model
+can then recompute scores while training and mine semantic hard negatives without encoding
+the corpus on every training step.
 
-Both run inside the Colab notebooks after the scorer cell (sections 5b and 5d); the notebooks
-save the results to Drive because they are the expensive artefacts.
+| Script | Use | Output |
+|---|---|---|
+| [precompute_semantic_components.py](precompute_semantic_components.py) | Final learned multi-view scorer. | Per-answer similarity-cache references, document embeddings, answer mask, and corpus-to-graph column mapping. |
+| [precompute_handcrafted_components.py](precompute_handcrafted_components.py) | Handcrafted handcrafted scorer comparison. | Direct, sum, and max similarities; background matchability totals; query IDs. |
+
+Inputs are the staged corpus, answers/embeddings, and built graph. Outputs are component
+files under `retriever/data/<graph>/`; encoder-specific filename suffixes may be added.
+The [experiment notebooks](../../experiments/notebooks/README.md) supply the exact paths.
+
+The engine reads learned-scorer inputs through `SEMANTIC_COMPONENTS` and
+`SEMANTIC_COMPONENTS_TEST`, and handcrafted scorer inputs through `HANDCRAFTED_COMPONENTS` and
+`HANDCRAFTED_COMPONENTS_TEST`. These are inputs to the scorer, not its trained weights.
+
+Use a component file with the graph and document ordering it was built for. See
+[setup and data](../../docs/SETUP.md) for artifact locations and
+[semantic_scorer.py](../../experiments/eval/semantic_scorer.py) for cache construction.

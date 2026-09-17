@@ -81,7 +81,7 @@ _run("qwen3",  _pick(lambda s: s.startswith("import os, shutil") and "qwen3" in 
 _run("engine", _pick(lambda s: s.startswith("import os, sys, torch") and "gfm-rag-adapted.zip" in s))
 _pins = [s for s in _code if '_im.version("wandb")' in s or 'wandb.__version__.startswith("0.18.")' in s]
 if _pins: _run("pins", _pins[0], fatal=False)
-_run("fusion sources", _pick(lambda s: s.startswith("# === write the CARGO-fusion files")))
+_run("fusion sources", _pick(lambda s: s.startswith("# === write the SciGraphIR-fusion files")))
 # The notebook's blob may predate the current engine (an old interpret() has no do_paths, so a "scan"
 # silently runs the slow path search). gfm_overlay.zip on Drive carries the current fusion sources.
 import zipfile as _zf
@@ -106,7 +106,7 @@ interpret_paths.py -- path interpretations for a trained fusion checkpoint.
 
 Same construction as sft_training (config, datasets, model, trainer) with no training: the
 checkpoint is loaded, then FusionSFTTrainer.interpret() runs the NBFNet-style gradient beam
-search from each requested query's seed frames to its best-ranked gold and records the CCMP
+search from each requested query's seed nodes to its best-ranked gold and records the CCMP
 responsibility along every path. Output: one JSON.
 
     python -m gfmrag.workflow.interpret_paths --config-path config/gfm_reasoner \\
@@ -114,7 +114,7 @@ responsibility along every path. Output: one JSON.
         datasets.cfgs.root=... datasets.train_names=[G] datasets.valid_names=[G] \\
         model.semantic=mlp model.cqig=false \\
         +interp.ckpt=/path/model_best.pth +interp.qids_file=/path/qids.json \\
-        +interp.out=/path/paths.json +interp.probes=/path/probes_test.jsonl \\
+        +interp.out=/path/paths.json +interp.answers=/path/probes_test.jsonl \\
         hydra.run.dir=/path/run
 """
 try:  # same torchvision shim as sft_training
@@ -172,7 +172,7 @@ def main(cfg: DictConfig) -> None:
                           eval_graph_dataset_loader=valid_loader)
     qids = json.load(open(cfg.interp.qids_file))
     golds = json.load(open(cfg.interp.golds_file)) if cfg.interp.get("golds_file") else None
-    kw = dict(probes_path=cfg.interp.get("probes"),
+    kw = dict(answers_path=cfg.interp.get("answers", cfg.interp.get("probes")),
               num_beam=int(cfg.interp.get("num_beam", 10)), path_topk=int(cfg.interp.get("path_topk", 5)),
               max_golds=int(cfg.interp.get("max_golds", 2)), top_views=int(cfg.interp.get("top_views", 3)),
               do_paths=bool(int(cfg.interp.get("paths", 1))), golds=golds,
@@ -210,10 +210,10 @@ for g in GRAPHS:
     dst = f"{DATA_ROOT}/{g}/raw/documents.json"
     if not os.path.exists(dst):
         os.makedirs(os.path.dirname(dst), exist_ok=True); shutil.copy(f"{DATA_ROOT}/{DATASET}_test/raw/documents.json", dst)
-PROBES = None
-try: PROBES = cp.probes_path("test")
+ANSWERS = None
+try: ANSWERS = cp.answers_path("test")
 except Exception: pass
-if not (PROBES and os.path.exists(PROBES)): PROBES = None
+if not (ANSWERS and os.path.exists(ANSWERS)): ANSWERS = None
 SCAN_OUT = f"{DRIVE}/outputs/scan/{DATASET}"; os.makedirs(SCAN_OUT, exist_ok=True)
 ARMS = []
 for name, rel, gkey, skey, gate in S["arms"]:
@@ -226,7 +226,7 @@ for name, rel, gkey, skey, gate in S["arms"]:
 assert ARMS, "no checkpoint found for any arm"
 print("test queries", len(json.load(open(QUERIES))), "| graphs", GRAPHS, "| writes", os.path.relpath(SCAN_OUT, DRIVE))
 
-# --- component tables for the test graphs (operator + scorer views) and the scorer files -----------
+# --- component tables for the test graphs (handcrafted scorer + scorer views) and the scorer files -----------
 import numpy as np, fnmatch, torch
 def copy_new(src, dst, pattern="*"):
     if not os.path.isdir(src): return 0
@@ -275,7 +275,7 @@ for g in GRAPHS:
         c = f"{CACHE}/{g}_operator_components{OP_SLUG}.npz"
         if os.path.exists(c): shutil.copy(c, opc(g))
         else:
-            sh(f"python3 -u precompute/precompute_operator_components.py "
+            sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                f"--dataset {DATASET} --graph {g} --split test --model {OP_MODEL}", KGDIR)
             shutil.copy(opc(g), c)
     if not _sem_ok(semc(g)):      # the H memmap never survives a runtime reset; seconds to rebuild for a test split
@@ -297,7 +297,7 @@ def model_env(ckpt, graph, skey, gate=None):
     st = json.load(open(sem_ckpt))
     assert int(st["jmax"]) == info["jmax"], f"scorer width mismatch: ckpt jmax={info['jmax']} vs scorer '{skey}' jmax={st['jmax']}"
     env_ = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                OPERATOR_COMPONENTS=opc(graph), OPERATOR_COMPONENTS_TEST=opc(graph),
+                HANDCRAFTED_COMPONENTS=opc(graph), HANDCRAFTED_COMPONENTS_TEST=opc(graph),
                 SEMANTIC_COMPONENTS=semc(graph), SEMANTIC_COMPONENTS_TEST=semc(graph),
                 SEMANTIC_CKPT=sem_ckpt, SEMANTIC_POPNET=sem_pop, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -330,7 +330,7 @@ def scan_all(name, ckpt, graph, skey, gate=None):
     rl = f"{RUNS}/scan_all_{name}"; os.makedirs(rl, exist_ok=True)
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
             f"+interp.ckpt={ckpt} +interp.qids_file={QIDS_FILE} +interp.out={out} " +
-            (f"+interp.probes={PROBES} " if PROBES else "") +
+            (f"+interp.answers={ANSWERS} " if ANSWERS else "") +
             f"+interp.paths=0 +interp.max_golds=8 +interp.top_views=1 hydra.run.dir={rl}",
             "/content/gfm-rag", extra=env_, log=f"{rl}/console.log", check=False)
     assert rc == 0 and os.path.exists(out), f"{name} failed (exit {rc}); read {rl}/console.log"
@@ -347,8 +347,8 @@ T = {k: {(r["id"], t["doc"]): t["rank"] for r in json.load(open(v)) for t in r["
 common = sorted(set.intersection(*[set(T[k]) for k in T]))
 n_docs = len(json.load(open(f"{DATA_ROOT}/{DATASET}_test/raw/documents.json")))
 CH = ["graph", "scorer", "dense", "fused"]
-LAB = {"frame_ccmp": "frame graph + CCMP", "frame_ccmp_off": "frame graph, CCMP gate off (same weights)",
-       "frame_nocc": "frame graph, no CCMP (own run)", "openie": "OpenIE entity graph",
+LAB = {"frame_ccmp": 'SciAfford graph + CCMP', "frame_ccmp_off": 'SciAfford graph, CCMP gate off (same weights)',
+       "frame_nocc": 'SciAfford graph, no CCMP (own run)', "openie": "OpenIE entity graph",
        "hyb_nocc": "merged graph, no CCMP", "hyb_ccmp": "merged graph + CCMP", "hyb_ccmp_off": "merged graph, CCMP gate off (same weights)"}
 lines = []
 def out(s=""): print(s); lines.append(s)
@@ -369,10 +369,10 @@ for st in strata:
             out(f"| {LAB.get(arm, arm)} | {ch} | {np.nanmedian(v):.0f} | {100*np.nanmean(v<=5):.1f} | {100*np.nanmean(v<=10):.1f} | "
                 f"{100*np.nanmean(v<=50):.1f} | {100*np.nanmean(v<=100):.1f} |")
     out("\nGold-by-gold, graph channel (rank lower is better):")
-    for a, b, lab in (("frame_ccmp", "openie", "frame + CCMP vs OpenIE"), ("frame_nocc", "openie", "frame no-CCMP vs OpenIE"),
+    for a, b, lab in (("frame_ccmp", "openie", 'affordance representation + CCMP vs OpenIE'), ("frame_nocc", "openie", 'affordance representation no-CCMP vs OpenIE'),
                       ("frame_ccmp", "frame_ccmp_off", "CCMP gate on vs off (same weights)"), ("frame_ccmp", "frame_nocc", "CCMP run vs no-CCMP run"),
-                      ("hyb_nocc", "frame_nocc", "merged graph vs frame graph (no CCMP)"), ("hyb_nocc", "openie", "merged graph vs OpenIE (no CCMP)"),
-                      ("hyb_ccmp", "frame_ccmp", "merged + CCMP vs frame + CCMP"), ("hyb_ccmp", "hyb_nocc", "merged: CCMP run vs no-CCMP run")):
+                      ("hyb_nocc", "frame_nocc", 'merged graph vs SciAfford graph (no CCMP)'), ("hyb_nocc", "openie", "merged graph vs OpenIE (no CCMP)"),
+                      ("hyb_ccmp", "frame_ccmp", 'merged + CCMP vs affordance representation + CCMP'), ("hyb_ccmp", "hyb_nocc", "merged: CCMP run vs no-CCMP run")):
         if (st, a, "graph") in res and (st, b, "graph") in res:
             x, y = res[(st, a, "graph")], res[(st, b, "graph")]
             out(f"- {lab}: first better {100*np.mean(x<y):.0f}%  tie {100*np.mean(x==y):.0f}%  second better {100*np.mean(x>y):.0f}%")

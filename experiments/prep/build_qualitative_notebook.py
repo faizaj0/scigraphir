@@ -6,21 +6,21 @@ the OpenIE entity graph does on the same query.
 
 WHAT IT PRODUCES, per field:
     picks.json            candidate examples ranked by how badly the dense baselines miss
-    paths_frame.json      path interpretations under the SciGraph frame graph + CCMP model
+    paths_frame.json      path interpretations under the SciAfford graph + CCMP model
     paths_openie.json     the same under the OpenIE entity-graph model (no CCMP)
-    paths_control.json    (optional) frame graph without CCMP, when the routing control exists
+    paths_control.json    (optional) SciAfford graph without CCMP, when the routing control exists
     qualitative.md / qualitative_paths.tex   the section's material
 
 HOW A PATH IS FOUND. NBFNet / GFM-RAG recipe: the graph channel's score of the gold paper is
 differentiated w.r.t. every layer's edge weights; a beam search over those gradients returns the
-top-k highest-weighted paths from the query's seed frames to the gold (Table 4 of GFM-RAG).
+top-k highest-weighted paths from the query's seed nodes to the gold (Table 4 of GFM-RAG).
 Along each path we also read the CCMP responsibility head at the layer the hop was used and
 express it as the gate the model applied (frontier mean = 1.0), which is the only part of this
 that is ours: the reader sees which hop CCMP amplified and which it suppressed.
 
-MODELS. Frame graph: the CCMP checkpoint trained on this field and its partner (the Table 9.3
+MODELS. SciAfford graph: the CCMP checkpoint trained on this field and its partner (the Table 9.3
 zero-shot runs are in-field for their two TRAINING fields). OpenIE graph: the in-field OpenIE
-run of colab_sir4_openie_ablation.ipynb. Both current engine. The frame-graph no-CCMP control
+run of colab_sir4_openie_ablation.ipynb. Both current engine. The SciAfford graph no-CCMP control
 is picked up automatically if colab_routing_<field>.ipynb has produced it.
 
 Usage
@@ -41,7 +41,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 
 FUSION_REL = rb.FUSION_REL + ["gfmrag/models/ultra/layers.py", "gfmrag/workflow/interpret_paths.py"]
@@ -52,7 +52,7 @@ HEADER = '''# Qualitative analysis and path interpretations (SIR-4 `__FIELD__`)
 
 Finds cross-field queries whose gold inspiration the dense retrievers bury and SciGraphIR ranks at
 the top, then explains the retrieval: the multi-view scorer's best-matching hypothetical answers,
-and the top reasoning paths from the query's seed frames to the gold paper under the trained graph
+and the top reasoning paths from the query's seed nodes to the gold paper under the trained graph
 reasoner (gradient beam search over per-layer edge weights, the NBFNet / GFM-RAG recipe), with the
 CCMP gate read at every hop. The same paths are extracted under the OpenIE entity-graph model so
 the two constructions can be shown side by side.
@@ -61,8 +61,8 @@ the two constructions can be shown side by side.
 |---|---|---|
 | 1-2 | paths, bundle, current scripts, Qwen3 | minutes |
 | 3 | engine + fusion sources (adds `interpret_paths.py`) | 5 min |
-| 4 | component tables for the frame and OpenIE test graphs; scorer files | minutes (cached) |
-| 5 | predictions of the frame-graph CCMP model on this field (one predict pass) | ~5 min |
+| 4 | component tables for the affordance representation and OpenIE test graphs; scorer files | minutes (cached) |
+| 5 | predictions of the SciAfford graph CCMP model on this field (one predict pass) | ~5 min |
 | 6 | scan the model's channel ranks on every cross query, then pick | minutes |
 | 7 | path interpretations, both graphs | minutes |
 | 8 | markdown + LaTeX | seconds |
@@ -82,7 +82,7 @@ drive.mount('/content/drive')
 DRIVE    = "/content/drive/MyDrive/cargo-gfmrag"
 FIELD    = "__FIELD__"
 DATASET  = f"sir4_{FIELD}"
-FRAME_TEST  = f"{DATASET}_test_v16sc"                 # SciGraph frame graph
+FRAME_TEST  = f"{DATASET}_test_v16sc"                 # SciAfford graph
 OPENIE_TEST = f"{DATASET}_test"                       # OpenIE entity graph (same corpus, same queries)
 TRAIN, TEST = FRAME_TEST, FRAME_TEST                  # config DEFAULT names only (every command overrides them); the cloned
                                                       # engine cell rewrites the yaml with these
@@ -91,10 +91,10 @@ OUT_ROOT = f"{DRIVE}/outputs/qualitative/{DATASET}"
 CACHE    = f"{DRIVE}/outputs/{DATASET}/cache"
 # --- the models -----------------------------------------------------------------------
 FIELD_SEM   = f"{DRIVE}/outputs/{DATASET}/semantic"                     # the field's own 5d scorer
-FRAME_RUN   = f"{DRIVE}/__FRAME_RUN__"                                  # frame graph + CCMP, trained on this field (+ partner)
+FRAME_RUN   = f"{DRIVE}/__FRAME_RUN__"                                  # SciAfford graph + CCMP, trained on this field (+ partner)
 FRAME_SEM   = f"{DRIVE}/__FRAME_SEM__"                                  # that run's scorer warm-start files
 OPENIE_RUN  = f"{DRIVE}/outputs/sir4_openie/{DATASET}_openie_qwenmlp_graph_e10_b2"   # OpenIE graph, no CCMP, in-field
-CONTROL_RUN = f"{DRIVE}/__CONTROL_RUN__"                                # frame graph, no CCMP (optional; routing notebook)
+CONTROL_RUN = f"{DRIVE}/__CONTROL_RUN__"                                # SciAfford graph, no CCMP (optional; routing notebook)
 BASELINES   = f"{DRIVE}/outputs/baselines/{DATASET}"
 N_EXAMPLES  = __N__
 QIDS_OVERRIDE = __QIDS__                              # [] = take the top N candidates of section 6
@@ -111,7 +111,7 @@ OP_SLUG   = "_content-qwen3"
 ''' + _HELP + '''
 for d in (OUT_ROOT, RUNS, CACHE):
     os.makedirs(d, exist_ok=True)
-for lab, p in (("frame ckpt", f"{FRAME_RUN}/model_best.pth"), ("frame scorer", f"{FRAME_SEM}/params_semantic_mlp_fixedloss___WARMDS__.json"),
+for lab, p in (("affordance representation ckpt", f"{FRAME_RUN}/model_best.pth"), ("affordance representation scorer", f"{FRAME_SEM}/params_semantic_mlp_fixedloss___WARMDS__.json"),
                ("openie ckpt", f"{OPENIE_RUN}/model_best.pth"), ("field scorer", f"{FIELD_SEM}/params_semantic_mlp_fixedloss_{DATASET}.json")):
     print(f"  {'ok ' if os.path.exists(p) else 'MISSING'}  {lab:13} {os.path.relpath(p, DRIVE)}")
 print("  " + ("ok " if os.path.exists(f"{CONTROL_RUN}/model_best.pth") else "-- ") + " control ckpt (optional)", os.path.relpath(CONTROL_RUN, DRIVE))
@@ -130,7 +130,7 @@ zipfile.ZipFile(BUNDLE).extractall(SCIGRAPHIR_ROOT); print("unpacked", os.path.b
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -146,9 +146,9 @@ cp.set_dataset(DATASET); print(cp.banner())
 
 QUERIES = f"{DATA_ROOT}/{DATASET}_test/raw/test.json"
 DOCS    = f"{DATA_ROOT}/{DATASET}_test/raw/documents.json"
-PROBES  = cp.probes_path("test")
-for lab, p in (("queries", QUERIES), ("documents", DOCS), ("probes", PROBES),
-               ("frame graph", f"{DATA_ROOT}/{FRAME_TEST}/processed/stage1/nodes.csv"),
+ANSWERS  = cp.answers_path("test")
+for lab, p in (("queries", QUERIES), ("documents", DOCS), ("probes", ANSWERS),
+               ('SciAfford graph', f"{DATA_ROOT}/{FRAME_TEST}/processed/stage1/nodes.csv"),
                ("openie graph", f"{DATA_ROOT}/{OPENIE_TEST}/processed/stage1/nodes.csv")):
     assert os.path.exists(p), f"missing {lab}: {p}"
     print(f"  ok  {lab:13} {p.replace(SCIGRAPHIR_ROOT, '<root>')}")
@@ -164,7 +164,7 @@ assert transformers.__version__.startswith("4."), f"transformers {transformers._
 print("ready | transformers", transformers.__version__)
 '''
 
-COMPONENTS = '''# 4. Component tables for both TEST graphs (operator + scorer views) and the scorer files.
+COMPONENTS = '''# 4. Component tables for both TEST graphs (handcrafted scorer + scorer views) and the scorer files.
 # Only the test-split embedding files come down from Drive, nothing already present is copied
 # twice, and only NEW files go back up.
 import numpy as np, fnmatch
@@ -218,7 +218,7 @@ for g in (FRAME_TEST, OPENIE_TEST):
         c = f"{CACHE}/{g}_operator_components{OP_SLUG}.npz"
         if os.path.exists(c): shutil.copy(c, opc(g))
         else:
-            sh(f"python3 -u precompute/precompute_operator_components.py "
+            sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                f"--dataset {DATASET} --graph {g} --split test --model {OP_MODEL}", KGDIR)
             shutil.copy(opc(g), c)
     if not _sem_ok(semc(g)):      # the H memmap never survives a runtime reset; seconds to rebuild for a test split
@@ -230,7 +230,7 @@ n = copy_new(EMB_LOCAL, f"{CACHE}/op_emb", "test_*")
 print(f"done in {time.time() - t0:.0f}s; {n} new embedding files written back to Drive")
 '''
 
-PREDICT = '''# 5. Full rankings of the frame-graph CCMP model on this field's test set (its training notebook
+PREDICT = '''# 5. Full rankings of the SciAfford graph CCMP model on this field's test set (its training notebook
 # only predicted on its held-out fields), plus the control if present. OpenIE rankings come from
 # that run's own predict pass. Baselines and scorer-only rankings are read from Drive.
 import torch
@@ -246,7 +246,7 @@ def model_env(ckpt, graph, sem_ckpt, sem_pop):
     st = json.load(open(sem_ckpt))
     assert int(st["jmax"]) == info["jmax"], f"scorer width mismatch: ckpt jmax={info['jmax']} vs {sem_ckpt} jmax={st['jmax']}"
     env_ = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                OPERATOR_COMPONENTS=opc(graph), OPERATOR_COMPONENTS_TEST=opc(graph),
+                HANDCRAFTED_COMPONENTS=opc(graph), HANDCRAFTED_COMPONENTS_TEST=opc(graph),
                 SEMANTIC_COMPONENTS=semc(graph), SEMANTIC_COMPONENTS_TEST=semc(graph),
                 SEMANTIC_CKPT=sem_ckpt, SEMANTIC_POPNET=sem_pop, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -294,7 +294,7 @@ CONTROL_CKPT = f"{CONTROL_RUN}/model_best.pth"
 if os.path.exists(CONTROL_CKPT):
     PRED["control"] = predict_with(CONTROL_CKPT, "frame_control", FRAME_TEST, FIELD_CKPT_SEM, FIELD_POP_SEM)
 else:
-    print("no frame-graph control checkpoint (run colab_routing notebook to add that row); skipped")
+    print('no SciAfford graph control checkpoint (run colab_routing notebook to add that row); skipped')
 OPENIE_CKPT = f"{OPENIE_RUN}/model_best.pth"
 _op = f"{OPENIE_RUN}/predictions_{OPENIE_TEST}.json"
 PRED["openie"] = _op if os.path.exists(_op) else predict_with(OPENIE_CKPT, "openie", OPENIE_TEST, FIELD_CKPT_SEM, FIELD_POP_SEM)
@@ -310,7 +310,7 @@ print("\\nsystems with rankings:", sorted(PRED))
 '''
 
 PICK = """# 6. Pick the examples in two steps.
-# 6a. SCAN: the frame-graph CCMP model's own per-channel ranks of every cross-field gold, with the
+# 6a. SCAN: the SciAfford graph CCMP model's own per-channel ranks of every cross-field gold, with the
 #     CCMP gate ON and, from the SAME weights, with the gate OFF at inference (no path search).
 # 6b. PICK: golds where every stage improves the rank, raw cosine > scorer channel > fused with the
 #     gate off (+ graph) > fused with the gate on (+ CCMP), strictly, final rank <= 10. Ordered by the
@@ -325,7 +325,7 @@ def scan(name, gate):
     _rl = f"{RUNS}/scan_{name}"; os.makedirs(_rl, exist_ok=True)
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(FRAME_TEST) +
             f"+interp.ckpt={FRAME_CKPT} +interp.qids_file={OUT_ROOT}/qids_cross.json +interp.out={out} "
-            f"+interp.probes={PROBES} +interp.paths=0 +interp.max_golds=4 +interp.top_views=3 hydra.run.dir={_rl}",
+            f"+interp.answers={ANSWERS} +interp.paths=0 +interp.max_golds=4 +interp.top_views=3 hydra.run.dir={_rl}",
             "/content/gfm-rag", extra=_env, log=f"{_rl}/console.log", check=False)
     assert rc == 0 and os.path.exists(out), f"scan {name} failed (exit {rc}); read {_rl}/console.log"
     save_index(FRAME_TEST)
@@ -392,7 +392,7 @@ def interpret_with(ckpt, name, graph, sem_ckpt, sem_pop, num_beam=10, path_topk=
     print(f"\\n[interpret:{name}] {os.path.relpath(ckpt, DRIVE)} on {graph} {info}")
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
             f"+interp.ckpt={ckpt} +interp.qids_file={OUT_ROOT}/qids.json +interp.out={out} "
-            f"+interp.probes={PROBES} +interp.num_beam={num_beam} +interp.path_topk={path_topk} "
+            f"+interp.answers={ANSWERS} +interp.num_beam={num_beam} +interp.path_topk={path_topk} "
             f"+interp.golds_file={OUT_ROOT}/golds.json +interp.max_golds=2 +interp.top_views=3 hydra.run.dir={run_local}",
             "/content/gfm-rag", extra=env_, log=f"{run_local}/console.log", check=False)
     assert rc == 0, f"interpret failed (exit {rc}); read {run_local}/console.log"
@@ -422,9 +422,9 @@ def main() -> int:
     ap.add_argument("--field", default="biology", choices=["cs", "biology", "physics", "matsci"])
     ap.add_argument("--n", type=int, default=4, help="examples to interpret (top of the candidate list)")
     ap.add_argument("--qids", default="", help="comma list of query ids to force instead of the top N")
-    ap.add_argument("--frame-run", default=None, help="Drive-relative run dir of the frame-graph CCMP checkpoint")
+    ap.add_argument("--frame-run", default=None, help='Drive-relative run dir of the SciAfford graph CCMP checkpoint')
     ap.add_argument("--frame-sem", default=None, help="Drive-relative dir of that run's scorer warm-start files")
-    ap.add_argument("--control-run", default=None, help="Drive-relative run dir of a frame-graph no-CCMP checkpoint")
+    ap.add_argument("--control-run", default=None, help='Drive-relative run dir of a SciAfford graph no-CCMP checkpoint')
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     pair = "physics+biology" if a.field in ("physics", "biology") else "cs+matsci"
@@ -441,7 +441,7 @@ def main() -> int:
     assert "def interpret(" in fusion_files["/content/gfm-rag/gfmrag/trainers/fusion_trainer.py"], "trainer lacks interpret()"
     assert "_reach_layers" in fusion_files["/content/gfm-rag/gfmrag/models/ultra/models.py"], "reasoner lacks reach capture"
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -453,7 +453,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer', 'gfmrag.workflow.interpret_paths']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready (path interpretation included)')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
 
     # The cloned config-rewrite cell asserts no "sir4" name survives; that guard is for TOMATO
@@ -487,7 +487,7 @@ def main() -> int:
                                        "language_info": {"name": "python"}, "accelerator": "GPU"},
           "nbformat": 4, "nbformat_minor": 5}
     json.dump(nb, open(out, "w"), indent=1)
-    print(f"wrote {out}: {len(cells)} cells | field {a.field} | frame run {frame_run} | n {a.n} | qids {qids or '(top N)'}")
+    print(f"wrote {out}: {len(cells)} cells | field {a.field} | affordance representation run {frame_run} | n {a.n} | qids {qids or '(top N)'}")
     return 0
 
 

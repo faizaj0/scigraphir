@@ -12,7 +12,7 @@ the test set:
 Uses the SAME 1,500 dev papers already carved (read from the existing dev_bundle_big.json), so the
 train/dev split is unchanged and disjoint.
 
-Run:  cd CARGO && python -m cargo.build_dev_like_test
+Run:  python -m retriever.tomato_star.build_dev_like_test
 Out:  outputs/caches/dev_bundle_big.json   (OVERWRITTEN, now per-step single-gold + 'stratum' field)
       outputs/caches/dev_strata.json        (index-aligned cross/same, for the notebook loader)
 

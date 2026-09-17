@@ -7,7 +7,7 @@ Composes, from the three existing builders, one run with a single setup and one 
     section 3c   HyDE + MuGI                          (build_llm_expansion_notebook, ~$0.20)
     section 4    engine install, STOCK patches only
     section 5    G-Reasoner + GFM-RAG                 (build_baselines_notebook ALL-mode cells)
-    section 6    CARGO fusion sources + patches
+    section 6    SciGraphIR fusion sources + patches
     section 7    multi-view scorer + component tables (restored from Drive)
     section 8    "+ Graph Reasoner (OpenIE graph)"    (build_mir_notebook --graph openie)
     section 9    the whole MIR table
@@ -53,7 +53,7 @@ sys.argv = _argv
 import build_mir_notebook as bm                # noqa: E402
 import build_rb_zeroshot_notebook as rb        # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 
 
@@ -73,8 +73,8 @@ One setup, one bundle, one scorer, one table. Blocks, in order:
 | 3 | six dense baselines (skip on manifest) | ~15 min first time |
 | 3c | **HyDE + MuGI** (gpt-4o-mini, N=4, Qwen3-0.6B encoder) | ~$0.20, ~15 min |
 | 4 | engine install + stock patches | 5 min |
-| 5 | **G-Reasoner** on the frame graph, **GFM-RAG** on the OpenIE graph (stock engine) | ~1 h each |
-| 6 | CARGO fusion sources + patches | 1 min |
+| 5 | **G-Reasoner** on the SciAfford graph, **GFM-RAG** on the OpenIE graph (stock engine) | ~1 h each |
+| 6 | SciGraphIR fusion sources + patches | 1 min |
 | 7 | multi-view scorer (restored from Drive) + component tables for the OpenIE graph | ~10 min |
 | 8 | **+ Graph Reasoner (OpenIE graph)** | ~1 h |
 | 9 | the MIR table, every row | seconds |
@@ -141,7 +141,7 @@ PRED   = {DATASET: {}}                  # {dataset: {label: predictions path}}; 
 os.makedirs(OUTRT[DATASET], exist_ok=True)
 assert os.path.exists(f"{DATA_ROOT}/{DATASET}_test/processed/stage1/nodes.csv"), (
     "no OpenIE graph in the bundle: build it (MIR_RUNBOOK.md section 9), re-bundle, re-upload")
-# Qwen3 node indexes cached on Drive by earlier runs (the frame graphs by colab_mir_standard, the
+# Qwen3 node indexes cached on Drive by earlier runs (the affordance representation graphs by colab_mir_standard, the
 # OpenIE graphs by a previous pass of this notebook): restoring them saves 20-45 min per graph.
 ALL_GRAPHS = (f"{DATASET}_train_v16sc", f"{DATASET}_test_v16sc", f"{DATASET}_train", f"{DATASET}_test")
 def _restore_index(g):
@@ -197,7 +197,7 @@ for fam, rows in ROWS:
         out(f"| {lab} | " + (" | ".join(f"{100 * s[m]:.2f}" if s.get(m) is not None else "--" for m, _ in MET)
                             if s else " | ".join("--" for _ in MET)) + " |")
 out()
-out("Frame-graph SciGraphIR rows come from the earlier colab_mir_standard run on Drive; MOOSE-Star and LATTICE")
+out('SciAfford graph SciGraphIR rows come from the earlier colab_mir_standard run on Drive; MOOSE-Star and LATTICE')
 out("are scored locally (MIR_RUNBOOK.md section 7 and results/mir/). Dashes = not run yet.")
 open(f"{OUT_ROOT}/table_mir_all.md", "w").write("\\n".join(lines)); print("\\nwrote", f"{OUT_ROOT}/table_mir_all.md")
 '''
@@ -211,7 +211,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values())
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "# Runs AFTER the graph baselines on purpose: they trained on the stock engine.\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
@@ -224,7 +224,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
     arms_src = "".join(base[rb.ARMS_CELL]["source"])
     assert "ARMS = [" in arms_src and "ReasonIR-8B" in arms_src
@@ -260,7 +260,7 @@ def main() -> int:
                 "entity graph. Signature-gated: a finished run on Drive is a `[skip]`."),
              code(BRIDGE_BB), bb_ship, md("### 5c. G-Reasoner"), bb_gre, md("### 5d. GFM-RAG"), bb_gfm,
              md("### 5e. Score"), bb_score, code(RESTORE_BB),
-             md("## 6. CARGO fusion sources + patches\n*(cloned from `tomato_ccmp_ablation.ipynb`; the "
+             md("## 6. SciGraphIR fusion sources + patches\n*(cloned from `tomato_ccmp_ablation.ipynb`; the "
                 "fusion-source blob is regenerated from the repo)*")]
     for i in rb.ENGINE_CELLS:
         if i in (5, 6):

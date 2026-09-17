@@ -25,7 +25,7 @@ fusion_trainer.py has moved on since that notebook was built and the trained wei
 must be loaded by the current model code.
 
 THE SIR-4 ARM'S SCORER WARM START. semantic_scorer.py fits one corpus at a time. The
-multi-view scorer (~200 parameters plus the popularity predictor) is therefore
+multi-view scorer (~200 parameters plus the background matchability predictor) is therefore
 warm-started on ONE SIR-4 field (SEM_WARM_DOM, default cs, the largest train set) and
 then trained jointly with the graph on all four fields inside the fusion, exactly as
 the TOMATO-Star arm's scorer was warm-started on TOMATO and trained inside its fusion.
@@ -46,8 +46,8 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)            # experiments
-CARGO = os.path.dirname(ROOT)
-FORK = f"{CARGO}/retriever/gfm-rag"
+REPO_ROOT = os.path.dirname(ROOT)
+FORK = f"{REPO_ROOT}/retriever/gfm-rag"
 
 SRC_NB = f"{ROOT}/notebooks/tomato_ccmp_ablation.ipynb"     # engine + patches, and the run that made the TOMATO checkpoint
 BASE_NB = f"{ROOT}/notebooks/sir4_baselines_all.ipynb"      # the six baseline arm definitions
@@ -73,8 +73,8 @@ OVERLAY_REL = ["scigraphir_paths.py",
                "experiments/eval/semantic_scorer.py",
                "experiments/eval/report_domain_results.py",
                "experiments/transfer/paired_bootstrap.py",
-               "retriever/eval/operator_scorer.py",
-               "retriever/precompute/precompute_operator_components.py",
+               'retriever/eval/handcrafted_scorer.py',
+               'retriever/precompute/precompute_handcrafted_components.py',
                "retriever/precompute/precompute_semantic_components.py"]
 
 
@@ -216,7 +216,7 @@ zipfile.ZipFile(BUNDLE).extractall(SCIGRAPHIR_ROOT); print("unpacked", os.path.b
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -237,7 +237,7 @@ QUERIES = f"{RB_RAW}/test.json"
 SETS    = f"{DATA_ROOT}/{DATASET}_test/sets.json"
 SUBSETS = f"{DATA_ROOT}/{DATASET}_test/subsets.json"
 for label, p in (("corpus", f"{RB_RAW}/documents.json"), ("queries", QUERIES),
-                 ("probes", cp.probes_path("test")),
+                 ("probes", cp.answers_path("test")),
                  ("graph", f"{DATA_ROOT}/{RBG}/processed/stage1/nodes.csv"),
                  ("sets", SETS), ("subsets", SUBSETS)):
     assert os.path.exists(p), f"missing {label}: {p}"
@@ -355,7 +355,7 @@ for tag, pred in PRED.items():
 print("\\nscored:", sorted(PRED))
 '''
 
-RB_COMPONENTS = '''# 6. ResearchBench inputs for the fusion: Qwen3 operator components (not read under the
+RB_COMPONENTS = '''# 6. ResearchBench inputs for the fusion: Qwen3 handcrafted scorer components (not read under the
 # multi-view scorer, but the loader expects the path) and the multi-view scorer's own
 # components (per-answer match matrix H as a memmap + aligned side arrays). Both are
 # aligned to the graph's nodes.csv document order by the precompute scripts.
@@ -382,19 +382,19 @@ def save_index(g, cache):
 
 restore_index(RBG, CACHE_RB)
 
-# operator components (Qwen3). Cached on Drive by the holdout notebook; recomputed if absent.
+# handcrafted scorer components (Qwen3). Cached on Drive by the holdout notebook; recomputed if absent.
 RB_OPC = f"{DATA_ROOT}/{RBG}/operator_components{OP_SLUG}.npz"
 _c = f"{CACHE_RB}/{RBG}_operator_components{OP_SLUG}.npz"
 if not os.path.exists(RB_OPC):
     if os.path.exists(_c):
-        shutil.copy(_c, RB_OPC); print("operator components restored from Drive")
+        shutil.copy(_c, RB_OPC); print('handcrafted scorer components restored from Drive')
     else:
-        sh(f"python3 -u precompute/precompute_operator_components.py "
+        sh(f"python3 -u precompute/precompute_handcrafted_components.py "
            f"--dataset {DATASET} --graph {RBG} --split test --model {OP_MODEL}", KGDIR)
         os.makedirs(os.path.dirname(_c), exist_ok=True); shutil.copy(RB_OPC, _c)
 z = np.load(RB_OPC, allow_pickle=True)
 assert "qwen" in str(z["encoder"]).lower(), f"{RB_OPC} was built with {z['encoder']!r}, not Qwen3"
-print(f"operator components  dense {z['dense'].shape}  {z['encoder']}")
+print(f"handcrafted scorer components  dense {z['dense'].shape}  {z['encoder']}")
 
 # multi-view scorer components. Encodes the corpus, queries and hypothetical answers with
 # Qwen3 on the first run (~10 min for 20k docs), then builds H [Q, Jmax, D] as a memmap.
@@ -454,7 +454,7 @@ def predict_rb(ckpt, name, sem_ckpt, sem_pop):
         "the warm-start file must come from the same 5d run as the checkpoint")
     extra = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1",
                  PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                 OPERATOR_COMPONENTS=RB_OPC, OPERATOR_COMPONENTS_TEST=RB_OPC,
+                 HANDCRAFTED_COMPONENTS=RB_OPC, HANDCRAFTED_COMPONENTS_TEST=RB_OPC,
                  SEMANTIC_COMPONENTS=RB_SEM, SEMANTIC_COMPONENTS_TEST=RB_SEM,
                  SEMANTIC_CKPT=sem_ckpt, SEMANTIC_POPNET=sem_pop, SEM_POP_LAMBDA="1.0",
                  FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -579,7 +579,7 @@ for d in S4_DOMS:
     for s in ("train", "test"):
         restore_index(g_of(d, s), S4_CACHE[d])
 
-# operator components (Qwen3) per graph: restored from the training runs' caches, else computed.
+# handcrafted scorer components (Qwen3) per graph: restored from the training runs' caches, else computed.
 import numpy as np
 def opc(d, s): return f"{DATA_ROOT}/{g_of(d, s)}/operator_components{OP_SLUG}.npz"
 for d in S4_DOMS:
@@ -588,7 +588,7 @@ for d in S4_DOMS:
         if not os.path.exists(p):
             if os.path.exists(c): shutil.copy(c, p)
             else:
-                sh(f"python3 -u precompute/precompute_operator_components.py "
+                sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                    f"--dataset sir4_{d} --graph {g_of(d, s)} --split {s} --model {OP_MODEL}",
                    KGDIR, extra={"SCIGRAPHIR_DATASET": f"sir4_{d}"})
                 os.makedirs(os.path.dirname(c), exist_ok=True); shutil.copy(p, c)
@@ -610,7 +610,7 @@ for d in S4_DOMS:
 
 S4_SCORER = '''# 8b. Warm-start the multi-view scorer on ONE SIR-4 field (SEM_WARM_DOM). The same 5d
 # recipe as the TOMATO-Star run: sorted-MLP over the hypothetical-answer match profile with a
-# jointly trained popularity predictor, --loss fixed (multi-gold), one seed. Its weights are
+# jointly trained background matchability predictor, --loss fixed (multi-gold), one seed. Its weights are
 # only the INITIALISATION: the fusion in 8e trains them on all four fields.
 SEM_S4 = f"{S4}/results/semantic_sir4_{SEM_WARM_DOM}"
 SEM_S4_DRIVE = f"{OUT_ROOT}/semantic_sir4_{SEM_WARM_DOM}"
@@ -656,7 +656,7 @@ SEM_TR, SEM_TE = ",".join(semc(d, "train") for d in S4_DOMS), ",".join(semc(d, "
 # graph-negative term HARDNEG_GRAPH=50, which that arm also ran with.
 S4_ENV = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1",
               PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-              OPERATOR_COMPONENTS=OPC_TR, OPERATOR_COMPONENTS_TEST=OPC_TE,
+              HANDCRAFTED_COMPONENTS=OPC_TR, HANDCRAFTED_COMPONENTS_TEST=OPC_TE,
               SEMANTIC_COMPONENTS=SEM_TR, SEMANTIC_COMPONENTS_TEST=SEM_TE,
               SEMANTIC_CKPT=SEM_CKPT_S4, SEMANTIC_POPNET=SEM_POP_S4, SEM_POP_LAMBDA="1.0",
               FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -923,7 +923,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values()), "fusion source contains '''"
     files_cell = code(
-        "# === write the CARGO-fusion files into the fork (generated from the repo copies "
+        "# === write the SciGraphIR-fusion files into the fork (generated from the repo copies "
         f"{built}) ===\n"
         "# The TOMATO-Star checkpoint is loaded by THIS model code, so it is the repo's current\n"
         "# fusion_reasoner.py / fusion_trainer.py, not the copies frozen in an older notebook.\n"
@@ -940,12 +940,12 @@ def main() -> int:
         "print('fusion files ready')\n")
 
     # --- repo scripts shipped inline ---
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values()), "an overlay script contains '''"
     for rel, need in (("experiments/eval/score_sir4.py", ["--gold-strata", "--per-query-out", "--cols"]),
                       ("experiments/eval/baselines_sir4.py", ["--pooling", "--trust-remote-code"]),
                       ("experiments/eval/semantic_scorer.py", ["SortedMLPScorer", "MatchabilityPredictor"]),
-                      ("retriever/eval/operator_scorer.py", ["def model_slug", "def load_split"])):
+                      ('retriever/eval/handcrafted_scorer.py', ["def model_slug", "def load_split"])):
         miss = [t for t in need if t not in overlay[rel]]
         assert not miss, f"{rel} lacks {miss}; the notebook would ship a script that cannot do its job"
 

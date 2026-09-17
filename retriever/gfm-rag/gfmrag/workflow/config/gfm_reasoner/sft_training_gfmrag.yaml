@@ -9,7 +9,7 @@
 # WHY THIS RUNS ON tomato_train / tomato_test AND NOT ON v16sc.
 #   GNNRetriever.forward ends in map_entities_to_docs, which dereferences
 #   graph.target_to_other_types (model.py:318). Only GraphIndexDatasetV1 sets that
-#   attribute, and V1 needs target_type: entity. Our v16sc graph has no `entity` nodes at
+#   attribute, and V1 needs target_type: entity. Our SciAfford graph has no `entity` nodes at
 #   all -- its node types are limitation/method/function/mechanism/task/finding/domain +
 #   document -- so target_type: entity finds zero targets there. tomato_{train,test} is the
 #   OpenIE construction, typed entity + document, which is exactly what this model expects.

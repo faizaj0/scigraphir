@@ -1,11 +1,11 @@
 """
 build_researchbench_pool.py — turn ResearchBench's inspiration-retrieval split into a
-CARGO-compatible corpus, and answer the two gating questions before any extraction is paid for.
+SciGraphIR-compatible corpus, and answer the two gating questions before any extraction is paid for.
 
   1. FEASIBILITY. How many *unique* documents are in the union of all per-query candidate
      sets? ResearchBench ships 75 candidates per query, but candidates are drawn from shared
      per-discipline pools and repeat heavily across queries, so the union -- not 1367 x 75 --
-     is the frame-extraction bill.
+     is the affordance representation-extraction bill.
 
   2. CONTAMINATION. How many of those documents already appear in TOMATO-Star, which we train
      on? Run tomato_index.py first; this script consults its cache.
@@ -16,7 +16,7 @@ main reason to use this benchmark at all. Instead we report metrics twice -- ove
 and over the clean subset -- and let the gap speak. `--drop-contaminated` is available if a
 strict corpus is wanted for a secondary table.
 
-Emits, in TOMATO's raw layout so the existing probes / operator / G-reasoner pipeline
+Emits, in TOMATO's raw layout so the existing hypothetical answers / handcrafted scorer / G-reasoner pipeline
 runs unchanged:
 
   <out>/raw/documents.json   {doc_id: "Title. Abstract"}      union pool
@@ -149,7 +149,7 @@ def main():
 
     print("\n=== FEASIBILITY ===")
     print(f"  candidate slots        {sum(len(v) for v in per_query_cands.values()):,}")
-    print(f"  UNIQUE documents       {n_pool:,}   <-- frame-extraction cost")
+    print(f"  UNIQUE documents       {n_pool:,}   <-- affordance representation-extraction cost")
     print(f"  used by exactly 1 query {reuse.get(1, 0):,}"
           f"   ({100*reuse.get(1,0)/max(n_pool,1):.1f}%)")
     print(f"  max reuse              {max(occurrences.values(), default=0):,} queries")
@@ -216,7 +216,7 @@ def main():
     print("\n=== CONTAMINATION (ResearchBench pool vs TOMATO-Star) ===")
     print(f"  {'layer':<28} {'pool docs':>10} {'of which gold':>14} {'queries hit':>12} {'src DOIs':>9}")
     contam_report = {}
-    for lv, desc in (("l1", "L1 v16sc graph corpus"),
+    for lv, desc in (("l1", "L1 SciAfford graph corpus"),
                      ("l2", "L2 training bundle"),
                      ("l3", "L3 full TOMATO-Star train")):
         hits = contam[lv]

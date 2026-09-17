@@ -1,0 +1,54 @@
+{
+  "split": "matsci_test_low",
+  "source": "04_resolved/matsci_test_low.jsonl",
+  "papers_in": 497,
+  "decomposed": 445,
+  "queries": 331,
+  "eval_rows": 909,
+  "documents": 1296,
+  "title_only_documents": 152,
+  "families": 331,
+  "set_aware_queries": 331,
+  "alternative_only_documents": 435,
+  "queries_with_alternative_only_golds": 257,
+  "eval_files": {
+    "eval.json": "set-aware, one row per query, THE evaluation",
+    "eval_primary.json": "D1 only, flat, TOMATO-comparable"
+  },
+  "stratum": {
+    "same": 722,
+    "cross": 187
+  },
+  "domain_distance": {
+    "overlap_1": 189,
+    "disjoint": 123,
+    "same_primary": 432,
+    "overlap_2plus": 81
+  },
+  "field_confidence": {
+    "clear": 582,
+    "ambiguous": 307,
+    "None": 20
+  },
+  "label_basis": {
+    "topics": 756,
+    "None": 20,
+    "primary_fallback": 133
+  },
+  "cross_rows_on_ambiguous_field": 51,
+  "queries_without_stratum_evidence": 1,
+  "queries_partially_labelled": 18,
+  "primary_rows_without_stratum_evidence": 20,
+  "uniqueness_after_resolution": {
+    "not_falsified": 67,
+    "falsified": 257,
+    "resolution_incomplete": 7
+  },
+  "excluded": {
+    "primary_incomplete": 114
+  },
+  "options": {
+    "drop_title_only": false,
+    "keep_partial": false
+  }
+}

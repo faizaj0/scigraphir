@@ -1,5 +1,5 @@
 # ---- All arms, all domains, one table ----------------------------------------
-# BM25 / BGE / Qwen3 / operator / trained fusion, scored through the SAME
+# BM25 / BGE / Qwen3 / handcrafted scorer / trained fusion, scored through the SAME
 # score_sir4.py call so every column is comparable. Needs the corpora unpacked;
 # paste it into the transfer-matrix notebook after the unpack cell, which unpacks
 # all four domains at once.
@@ -11,8 +11,8 @@
 #   qwen3     the components npz stores dense = Q @ D.T, and cached_encode
 #             normalizes, so that array IS cosine similarity. Ranking it
 #             reproduces `bge_sir4.py --model /content/qwen3` exactly.
-#   operator  S_op recomputed from the same npz plus the fitted w and beta.
-#             This is operator_scorer.py's formula, not an approximation.
+#   handcrafted scorer  S_op recomputed from the same npz plus the fitted w and beta.
+#             This is handcrafted_scorer.py's formula, not an approximation.
 #   bm25      lexical, so it needs no model at all. Computed from documents.json.
 #
 # No GPU, no encoder, no API call anywhere in this cell.
@@ -31,12 +31,12 @@ os.makedirs(OUT_C, exist_ok=True)
 csv.field_size_limit(10 ** 7)
 
 TOPK = 300                        # same depth as the fusion's predict_top_k
-ARMS = ["bm25", "bge", "qwen3", "operator", "fusion"]
+ARMS = ["bm25", "bge", "qwen3", 'operator', "fusion"]
 
 # THE QWEN3 INSTRUCTION: the model card's own example task, verbatim and untuned,
 # matching how BGE is run with its stock instruction.
 #
-# DEFINED HERE, not read from the bundle. Reading it from operator_scorer.py meant
+# DEFINED HERE, not read from the bundle. Reading it from handcrafted_scorer.py meant
 # an out-of-date bundle silently reverted the swap and reported the old baseline
 # under the new name -- the cell printed the old string and carried on. The
 # bundle is now CHECKED against this instead, so a stale one is loud and the
@@ -51,16 +51,16 @@ def qi_tag(instruct):
     import hashlib
     return "_i" + hashlib.md5(instruct.encode()).hexdigest()[:6]
 
-# Does the shipped code agree? If not, the operator and fusion arms below were
+# Does the shipped code agree? If not, the handcrafted scorer and fusion arms below were
 # built with a different prompt from the qwen3 arm, and that must be visible.
 BUNDLE_QI = None
 try:
     import importlib.util as _ilu2
-    _ospec = _ilu2.spec_from_file_location("_op", f"{KGDIR}/eval/operator_scorer.py")
+    _ospec = _ilu2.spec_from_file_location("_op", f"{KGDIR}/eval/handcrafted_scorer.py")
     _op = _ilu2.module_from_spec(_ospec); _ospec.loader.exec_module(_op)
     BUNDLE_QI = _op.QWEN_QI
 except Exception as e:
-    print(f"could not read the bundled operator_scorer ({e})")
+    print(f"could not read the bundled handcrafted_scorer ({e})")
 
 STALE_BUNDLE = BUNDLE_QI is not None and BUNDLE_QI.strip() != QWEN_QI.strip()
 print(f"Qwen3 instruction: {QWEN_QI!r}")
@@ -69,7 +69,7 @@ if STALE_BUNDLE:
           "   Qwen3 instruction:\n"
           f"     {BUNDLE_QI!r}\n"
           "   The qwen3 row below is correct (encoded here, with the new prompt).\n"
-          "   The operator and fusion rows are NOT on that prompt. Rebuild and\n"
+          '   The handcrafted scorer and fusion rows are NOT on that prompt. Rebuild and\n'
           "   reupload the bundles, then rebuild components, to make them agree.\n")
 
 # WHICH MRR? The key `mrr` means opposite things in the two scorer versions -- the
@@ -81,7 +81,7 @@ if STALE_BUNDLE:
 #
 # That is why the fusion scores.json on Drive shows MRR 0.31 while a fresh
 # best-gold run shows 0.65: same model, different metric under the same name.
-# Probe the scorer that will actually run and report BOTH, named by what they
+# hypothetical answer the scorer that will actually run and report BOTH, named by what they
 # compute rather than by whichever key happens to hold them.
 import importlib.util as _ilu
 _spec = _ilu.spec_from_file_location("_sc", f"{S4}/eval/score_sir4.py")
@@ -100,7 +100,7 @@ COLS   = ",".join(CKEYS)
 
 def sets_path(d):
     tag = "cs_test_final" if d == "cs" else f"{d}_test_low"
-    return f"{SCIGRAPHIR_ROOT}/benchmark/data/benchmark/{tag}/sets.json"
+    return f"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/{tag}/sets.json"
 
 
 def find(*cands):
@@ -148,7 +148,7 @@ def rank_to_recs(scores, doc_ids, qids, qtext):
 
 
 # ---- arm builders ------------------------------------------------------------
-def zr(X):                        # row-wise over documents, as in operator_scorer
+def zr(X):                        # row-wise over documents, as in handcrafted_scorer
     return (X - X.mean(1, keepdims=True)) / (X.std(1, keepdims=True) + 1e-6)
 
 
@@ -161,7 +161,7 @@ def load_components(d):
     if not os.path.exists(npz):
         return None, "components npz missing"
     if not pj:
-        return None, "operator params missing"
+        return None, 'handcrafted scorer params missing'
     return (npz, pj), None
 
 
@@ -210,7 +210,7 @@ def build_qwen3(d):
     return write_preds(dst, st, recs), "encoded with the model-card instruction"
 
 
-def build_operator(d):
+def build_handcrafted(d):
     got, why = load_components(d)
     if not got:
         return None, why
@@ -327,7 +327,7 @@ for d in DOMS:
     preds = {}
 
     for arm, fn in (("bm25", build_bm25), ("qwen3", build_qwen3),
-                    ("operator", build_operator)):
+                    ('operator', build_handcrafted)):
         p, why = fn(d)
         notes.append(f"{d:9} {arm:9} {why if p else 'UNAVAILABLE, ' + why}")
         if p:
@@ -389,12 +389,12 @@ out(f"- Scored with the **{SCORER}** score_sir4.py. `MRR(best)` is the rank of t
 out("- `bm25` is the lexical floor: how far word overlap alone gets you.")
 out("- `bge` defines the similar/dissimilar split, so its own `dissimilar` row is "
     "near zero by construction. That is the definition, not a result.")
-out("- `qwen3` and `operator` share an encoder, a cache AND an instruction, so "
-    "their gap isolates what the probe and anti-hub terms add over plain dense "
+out('- `qwen3` and `handcrafted` share an encoder, a cache AND an instruction, so '
+    "their gap isolates what the hypothetical answer and specificity correction terms add over plain dense "
     "retrieval.")
 out(f"- Qwen3 instruction: `{QWEN_QI.strip()}` -- the model card's own example "
     f"task, untuned, matching how BGE is run with its stock instruction.")
-out("- CAVEAT while components are stale: `operator` and `fusion` read a "
+out('- CAVEAT while components are stale: `handcrafted` and `fusion` read a '
     "components npz whose `dense` term was encoded with the PREVIOUS instruction. "
     "Until those are rebuilt and the fusion retrained, they are not on the same "
     "prompt as the `qwen3` row above.")
@@ -409,7 +409,7 @@ print(f"\nwrote {OUT_C}/arm_comparison.md")
 # the only one of the two definitions in that range).
 T73     = [(MRR_BEST, "MRR"), ("ndcg@5", "nDCG@5"),
            ("recall@5", "Recall@5"), ("completeset@5", "CompleteSet@5")]
-DISPLAY = {"bm25": "BM25", "bge": "BGE", "qwen3": "Qwen3", "operator": "Operator",
+DISPLAY = {"bm25": "BM25", "bge": "BGE", "qwen3": "Qwen3", 'operator': 'Handcrafted semantic scorer',
            "fusion": "SciGraphIR"}
 TITLE   = {"cs": "Computer Science", "biology": "Biology",
            "physics": "Physics", "matsci": "Materials Science"}

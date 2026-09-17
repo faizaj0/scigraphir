@@ -5,18 +5,16 @@ Line graphs; no gold reasoning paths exist, so routes are characterised against 
 against the structure of the graph (node degree).
 
   (a) success against route length: P(graph rank <= 10 | length of the top route), cross- and same-field golds,
-      SciAffordGraph vs the OpenIE entity graph                             -> the reach of the reasoner is a distance effect
+      SciAfford graph vs the OpenIE entity graph                             -> the reach of the reasoner is a distance effect
   (b) anatomy of the route: the node type reached at each hop position (share of routes), cross-field golds
   (c) hub inflation: median weight of the top route and P(graph rank <= 10) against the largest sender degree on the route
   (d) the CCMP gate against the sender's degree (mean, 95% bootstrap CI): does credit go to specific senders or to hubs?
 
-Inputs: hops_frame_ccmp.json (+ hops_openie.json) from the showcase notebooks; --edges = the frame graph's
-processed/stage1/edges.csv (for degrees); QUARTET eval.json gives the per-gold stratum for SIR-4 (else the query stratum).
+Inputs: hops_frame_ccmp.json (+ hops_openie.json) from the showcase notebooks; --edges = the SciAfford graph's
+processed/stage1/edges.csv (for degrees); SIR-4 eval.json gives the per-gold stratum for SIR-4 (else the query stratum).
 Routes that do not start at a seed, do not chain, or revisit a node are decoding artefacts and are skipped.
 
-    python3 eval/graph_reasoning_fig.py --dir results/qualitative/drive_scan_sir4_cs --docs ../retriever/data/sir4_cs_test/raw/documents.json \
-        --edges ../retriever/data/sir4_cs_test_v16sc/processed/stage1/edges.csv \
-        --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_reasoning_cs
+    python3 eval/graph_reasoning_fig.py --dir results/qualitative/drive_scan_sir4_cs --docs ../retriever/data/sir4_cs_test/raw/documents.json         --edges ../retriever/data/sir4_cs_test_v16sc/processed/stage1/edges.csv         --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_reasoning_cs
 """
 import argparse, collections, csv, json, math, os, random
 
@@ -51,10 +49,10 @@ def openie_path(d, prefix="hops_"):
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def load(path, max_hops):
@@ -88,12 +86,12 @@ def style(ax):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--docs", required=True)
-    ap.add_argument("--edges", default=None, help="frame graph processed/stage1/edges.csv (degrees for panels c, d)")
-    ap.add_argument("--quartet", default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default=""); ap.add_argument("--max-hops", type=int, default=6); ap.add_argument("--k", type=int, default=10)
+    ap.add_argument("--edges", default=None, help='SciAfford graph processed/stage1/edges.csv (degrees for panels c, d)')
+    ap.add_argument("--sir4", "--quartet", dest='sir4', default=None); ap.add_argument("--out", required=True); ap.add_argument("--title", default=""); ap.add_argument("--max-hops", type=int, default=6); ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--arm", default="auto", help="auto | hyb_ccmp | frame_ccmp")
     a = ap.parse_args(); K = a.k
     docs = json.load(open(a.docs))
-    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAffordGraph arm:", ARM, f"({ARMLAB})")
+    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAfford graph arm:", ARM, f"({ARMLAB})")
     F = load(f"{a.dir}/{a.prefix}{ARM}.json", a.max_hops)
     _ep = openie_path(a.dir, a.prefix); E = load(_ep, a.max_hops) if _ep else {}
     deg = collections.Counter()
@@ -101,12 +99,12 @@ def main():
         with open(a.edges) as f:
             for row in csv.DictReader(f): deg[row["source"]] += 1; deg[row["target"]] += 1
     unit = "query stratum (hops file)"
-    if a.quartet and os.path.exists(a.quartet):
+    if a.sir4 and os.path.exists(a.sir4):
         qz = {}
-        for x in json.load(open(a.quartet)):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], d)] = m.get("stratum")
         for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
-        unit = "gold stratum (QUARTET)"
+        unit = "gold stratum (SIR-4)"
     strata = [s for s in ("cross", "same") if any(v["stratum"] == s for v in F.values())] or ["all"]
     if strata == ["all"]:
         for v in F.values(): v["stratum"] = "all"
@@ -124,7 +122,7 @@ def main():
             ks = [k for k in keys[s] if F[k]["path"] and len(F[k]["path"]["hops"]) == h]
             ok = sum(F[k]["rank"]["graph"] <= K for k in ks); ns.append(len(ks))
             ys.append(ok / len(ks) if ks else float("nan")); l, u = wilson(ok, len(ks)); lo.append(l); hi.append(u)
-        ax.fill_between(hs, lo, hi, color=col, alpha=0.12, lw=0); ax.plot(hs, ys, marker="o", ms=4, lw=1.5, color=col, label=f"SciAffordGraph, {lab}")
+        ax.fill_between(hs, lo, hi, color=col, alpha=0.12, lw=0); ax.plot(hs, ys, marker="o", ms=4, lw=1.5, color=col, label=f"SciAfford graph, {lab}")
         for h, n, y in zip(hs, ns, ys):
             if n and s == s0: ax.text(h, -0.09, f"n={n}", fontsize=5.6, color=MUTED, ha="center")
         summary[f"a:{s}"] = {str(h): {"n": n, "p": y} for h, n, y in zip(hs, ns, ys)}

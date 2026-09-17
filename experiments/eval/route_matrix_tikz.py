@@ -13,7 +13,7 @@ are hops; q and i* are the endpoint circles. Ranks and baselines go in the legen
       --span "R1H1=measure memory degradation over time" --span "R1H2=return to a transient unstable state" \\
       --out figures/fig_route_matrix_reconsolidation --compile
 
-Node ids for --span are R<row>H<hop> (row 1 = route 1, hop 1 = the seed frame); run once without --span to
+Node ids for --span are R<row>H<hop> (row 1 = route 1, hop 1 = the seed node); run once without --span to
 see the ids printed. A span's text must occur verbatim in one of the three texts; it is highlighted there
 in the colour of that node's type with a superscript number, and the same number badges the cell.
 """
@@ -48,7 +48,7 @@ def main():
     docs = json.load(open(f"{R}/retriever/data/{D}_test/raw/documents.json"))
     queries = {x["id"]: x for x in json.load(open(f"{R}/retriever/data/{D}_test/raw/test.json"))}
     qf = {}
-    qp = f"{R}/benchmark/data.nosync/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
+    qp = f"{R}/sir-4/data/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
     if os.path.exists(qp):
         for x in json.load(open(qp)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qf[(x["id"], d)] = m
@@ -150,7 +150,7 @@ def main():
   ]""".replace("%(tw)d", str(26 if ncol <= 4 else (22 if ncol <= 5 else 19)))]
     # matrix
     cells = []
-    hdr = " & ".join("|[hd]| {%s}" % ("seed frame" if c == 1 else f"hop {c}") for c in range(1, ncol + 1)) + " \\\\"
+    hdr = " & ".join("|[hd]| {%s}" % ('seed node' if c == 1 else f"hop {c}") for c in range(1, ncol + 1)) + " \\\\"
     cells.append(hdr)
     for ri, (lab, p, grey) in enumerate(rows, 1):
         chain = [p["hops"][0]["head"]] + [h["tail"] for h in p["hops"]][:-1]
@@ -215,8 +215,8 @@ def main():
     lab = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Embedding", "reasonir": "ReasonIR-8B"}
     bl = ", ".join(f"{lab[k]} {('$>$300' if v >= 10**6 else v)}" for k, v in base.items() if v)
     L.append("\\node[below=5mm of m.south, anchor=north, text=muted, align=center, text width=170mm, font=\\footnotesize] (leg) "
-             "{Rows are the reasoner's top-weighted routes from a seed frame of $q$ to $i^{\\star}$; the last row is the OpenIE entity graph%s. "
-             "Rank of $i^{\\star}$: SciAffordGraph channel \\textbf{%s} (%s with the CCMP gate off), \\textsc{SciGraphIR} \\textbf{%s} (%s off), multi-view scorer %s, Qwen3 cosine %s%s; entity-graph channel %s.%s};"
+             "{Rows are the reasoner's top-weighted routes from a seed node of $q$ to $i^{\\star}$; the last row is the OpenIE entity graph%s. "
+             "Rank of $i^{\\star}$: SciAfford graph channel \\textbf{%s} (%s with the CCMP gate off), \\textsc{SciGraphIR} \\textbf{%s} (%s off), multi-view scorer %s, Qwen3 cosine %s%s; entity-graph channel %s.%s};"
              % ("'s route on the same corpus" if orow else " built from the same corpus, which has no route to $i^{\\star}$", rk.get("graph"), rko.get("graph", "--"), rk.get("fused"), rko.get("fused", "--"), rk.get("scorer"), rk.get("dense"), ("; " + bl) if bl else "", rki.get("graph", "--"),
                 " Orange: the CCMP gate on the hop's sender where it differs from 1." if any(abs(h.get("gate", 1) - 1) > 0.05 for _, p, gr in rows if not gr for h in p["hops"]) else ""))
     L.append("\\end{tikzpicture}\n\\end{document}")

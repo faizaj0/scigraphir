@@ -2,14 +2,14 @@
 precompute_semantic_components.py — cache what the LEARNED semantic scorer needs inside the
 graph fusion, aligned to the graph's nodes.csv document order.
 
-The operator version of this script (precompute_operator_components.py) caches S and M, the two
+The handcrafted scorer version of this script (precompute_handcrafted_components.py) caches S and M, the two
 handcrafted summaries of the hypothetical-answer matches. The sorted-MLP does not use summaries:
 it reads the whole ordered match profile, so it needs the FULL per-answer matrix
 
     H  [Q, Jmax, n_doc]   float16   ReLU(cos(hypothetical answer j, document d))
 
 plus the direct query-document similarity, the answer-validity mask, and the document embeddings
-that the popularity predictor p_hat(d) = softplus(g(E(d))) reads.
+that the background matchability predictor p_hat(d) = softplus(g(E(d))) reads.
 
 H IS NOT COPIED. semantic_scorer.py already materialises exactly this matrix as a memmap under
 outputs/caches/semantic/<dataset>/, and at CS scale it is 1.76 GB — duplicating it per graph would
@@ -23,8 +23,7 @@ Run it AFTER the semantic scorer (notebook section 5d), which is what builds the
 the checkpoint the fusion warm-starts from. If the memmap is absent this rebuilds it from the
 cached embeddings; if the embeddings are absent too it will encode, which is the slow path.
 
-  python precompute/precompute_semantic_components.py \
-      --dataset sir4_physics --model /content/qwen3 --graph sir4_physics_train_v16sc --split train
+  python precompute/precompute_semantic_components.py       --dataset sir4_physics --model /content/qwen3 --graph sir4_physics_train_v16sc --split train
 """
 import argparse
 import csv
@@ -65,7 +64,7 @@ def main():
     set_dataset(a.dataset)
     print(banner())
 
-    op = _load("op", f"{BASE}/eval/operator_scorer.py")
+    op = _load("op", f"{BASE}/eval/handcrafted_scorer.py")
     sem = _load("sem", f"{_ROOT}/experiments/eval/semantic_scorer.py")
     slug = op.model_slug(a.model)
 
@@ -92,7 +91,7 @@ def main():
     h_path = f"{cache}/semantic_H_{tag}.f16"
     assert os.path.exists(h_path), f"H memmap missing: {h_path}"
 
-    # ---- document embeddings, for the popularity predictor ---------------------------
+    # ---- document embeddings, for the background matchability predictor ---------------------------
     de = np.load(f"{emb_dir()}/{a.split}_doc{slug}.npy").astype(np.float32)
     assert de.shape[0] == D, f"doc embeddings {de.shape[0]} rows != {D} documents"
 
@@ -104,7 +103,7 @@ def main():
     out = f"{BASE}/data/{a.graph}/semantic_components{slug}.npz"
     np.savez_compressed(
         out,
-        # reordered to nodes.csv document order, exactly like the operator components
+        # reordered to nodes.csv document order, exactly like the handcrafted scorer components
         dense=np.asarray(data["dense"])[:, col].astype(np.float16),
         doc_emb=de[col].astype(np.float16),
         total_S=np.asarray(data["total_S"])[col].astype(np.float32),

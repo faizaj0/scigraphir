@@ -1,9 +1,9 @@
 """Resolve the TRAIN-split inspirations/sources OpenAlex left without a domain.
 
-Mirror of cargo.resolve (which is test-only). The domain files leave a small residual
+Mirror of retriever.tomato_star.resolve (which is test-only). The domain files leave a small residual
 unlabelled (openalex_found=False or domain-null): ~2,016 gold inspirations + ~71 source papers.
 We classify each into one of the 4 OpenAlex top-level domains from its title+abstract via
-gpt-4o-mini (SAME prompt/model as cargo.resolve), so the train same/cross frame carries no
+gpt-4o-mini (SAME prompt/model as retriever.tomato_star.resolve), so the train same/cross affordance representation carries no
 mislabelled positives and cross is not under-counted.
 
 Writes:
@@ -13,10 +13,10 @@ Text comes from data/train.jsonl (titles + abstracts). RESUMABLE: re-running loa
 existing override files and skips anything already done (also checkpoints every ~200).
 
 Run:
-  cd CARGO && OPENAI_API_KEY=... python -m cargo.resolve_train          # the real run
-  cd CARGO && python -m cargo.resolve_train --dry-run                   # harvest + estimate only, no API
-Then rebuild the frame:
-  python -m cargo.train_strata --split train --write
+  OPENAI_API_KEY=... python -m retriever.tomato_star.resolve_train          # the real run
+  python -m retriever.tomato_star.resolve_train --dry-run                   # harvest + estimate only, no API
+Then rebuild the affordance representation:
+  python -m retriever.tomato_star.train_strata --split train --write
 Cost: ~2,087 gpt-4o-mini calls, roughly $0.2-0.4.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ from .resolve import _classify  # identical prompt/model as the test resolver
 
 
 def _gold_key(found_doi: str | None, found_title: str | None) -> str | None:
-    """found_doi (lowercased) else found_title (lowercased) -- identical to cargo.data._norm_key."""
+    """found_doi (lowercased) else found_title (lowercased) -- identical to retriever.tomato_star.data._norm_key."""
     doi = (found_doi or "").strip().lower()
     if doi:
         return doi
@@ -133,7 +133,7 @@ def main():
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     _resolve(client, gold_text, CACHE / f"{args.split}_gold_domain_overrides.json", "gold", args.max_workers)
     _resolve(client, src_text, CACHE / f"{args.split}_source_domain_overrides.json", "source", args.max_workers)
-    print(f"[resolve_train] done. Now rerun:  python -m cargo.train_strata --split {args.split} --write")
+    print(f"[resolve_train] done. Now rerun:  python -m retriever.tomato_star.train_strata --split {args.split} --write")
 
 
 if __name__ == "__main__":

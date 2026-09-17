@@ -1,6 +1,6 @@
 # ---- Qwen3-Embedding dense arm on ResearchBench (Table 7.5) ------------------
 # Self-contained on purpose. Routing through bge_sir4.py would take the
-# instruction from the BUNDLED operator_scorer.py, and the bundle on Drive still
+# instruction from the BUNDLED handcrafted_scorer.py, and the bundle on Drive still
 # carries the OLD tuned prompt -- so this row would silently use a different
 # instruction from the Qwen3 row in Table 7.3. The prompt is pinned here instead.
 #

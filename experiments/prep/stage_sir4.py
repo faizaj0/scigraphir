@@ -1,32 +1,17 @@
 """
-stage_sir4.py -- Phase 0: turn a SIR-4 benchmark export into the layout the
-retriever / G-Reasoner scripts already expect.
+Stage SIR-4 benchmark exports for the retrieval pipeline.
 
-WHY THE OUTPUT IS CALLED `tomato_*`. Five scripts in the pipeline hardcode
-`$SCIGRAPHIR_ROOT/retriever/data/tomato_{split}/...`:
+Reads sir-4/data/benchmark/<export>/raw/documents.json and eval.json, validates
+the corpus/query references, and writes the retrieval schema under
+experiments/data/<domain>/ and retriever/data/sir4_<domain>_<split>/.
+Activation points experiments/data/active at the selected domain for bundling.
+Dataset-specific paths keep domains and their caches separate. MANIFEST.json
+records the source exports and staging counts.
 
-    sciafford/extract_frames.py             DATA_ROOT/tomato_{split}/raw/
-    sciafford/build_greasoner_dataset.py    KG/data/tomato_{split}/raw/
-    retriever/eval/operator_scorer.py            BASE/data/tomato_{split}/raw/
-    precompute/precompute_operator_components.py
-
-Renaming the staged data is a one-line change here; patching five scripts is
-five chances to introduce a silent divergence between arms. So SIR-4 is staged
-UNDER THOSE NAMES and every downstream script runs unmodified. The domain being
-staged is recorded in MANIFEST.json so a stale tree can never be mistaken for a
-different domain's.
-
-ONE DOMAIN AT A TIME. The caches downstream (`op_emb/{split}_doc.npy`,
-`probes/cache/probes_{split}.jsonl`, `sciafford/cache/frames_*`)
-are keyed by SPLIT, not by domain, so two domains staged into the same tree would
-silently share a document-embedding cache. `--domain` writes into
-`data/<domain>/` and only the ACTIVE domain is linked to the run root.
-
-Usage
------
-    python3 prep/stage_sir4.py --domain cs
-    python3 prep/stage_sir4.py --domain cs --verify-only
-    python3 prep/stage_sir4.py --domain biology --activate
+From the repository root:
+    python experiments/prep/stage_sir4.py --domain cs
+    python experiments/prep/stage_sir4.py --domain cs --verify-only
+    python experiments/prep/stage_sir4.py --domain biology --activate
 """
 from __future__ import annotations
 
@@ -38,10 +23,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)                                  # experiments/
-CARGO = os.path.dirname(ROOT)                                 # $SCIGRAPHIR_ROOT
-BENCH = f"{CARGO}/benchmark/data/benchmark"
+REPO_ROOT = os.path.dirname(ROOT)                                 # $SCIGRAPHIR_ROOT
+BENCH = f"{REPO_ROOT}/sir-4/data/benchmark"
 # Where the pipeline scripts resolve corpora (scigraphir_paths.corpus_dir).
-KG_DATA = f"{CARGO}/retriever/data"
+KG_DATA = f"{REPO_ROOT}/retriever/data"
 
 # domain -> (train export dir, test export dir)
 DOMAINS = {

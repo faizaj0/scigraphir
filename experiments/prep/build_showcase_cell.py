@@ -20,7 +20,7 @@ SHOWCASE = r'''
 # Runs the gradient beam search (paths=1) for a random query sample (the unbiased hop figure) plus every
 # candidate gold the scan flagged (pinned), under each arm, then eval/showcase.py ranks the candidates a reader would
 # call amazing: cosine buries the gold, the graph channel or the full model recovers it, and the top
-# route passes a function / limitation / method frame rather than a domain hub.
+# route passes a function / limitation / method affordance representation rather than a domain hub.
 import random
 SAMPLE_CROSS, SAMPLE_SAME = 80, 80   # random queries interpreted for the hop figure (unbiased); candidates are added on top
 TOP, N_TEX = 30, 4                   # candidates listed in the markdown / examples in the LaTeX table
@@ -54,7 +54,7 @@ def paths_all(name, ckpt, graph, skey, gate=None):
     rl = f"{RUNS}/hops_{name}"; os.makedirs(rl, exist_ok=True)
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
             f"+interp.ckpt={ckpt} +interp.qids_file={PQ_FILE} +interp.out={out} " +
-            (f"+interp.probes={PROBES} " if PROBES else "") +
+            (f"+interp.answers={ANSWERS} " if ANSWERS else "") +
             f"+interp.paths=1 +interp.golds_file={GOLDS_FILE} +interp.max_golds=4 +interp.top_views=3 "
             f"+interp.num_beam=6 +interp.path_topk=3 hydra.run.dir={rl}",
             "/content/gfm-rag", extra=env_, log=f"{rl}/console.log", check=False)
@@ -68,8 +68,8 @@ print("interpreted:", sorted(HOPS))
 os.makedirs(f"{S4}/eval", exist_ok=True)
 open(f"{S4}/eval/showcase.py", "w").write(r"""__SHOWCASE_PY__""")
 print("eval/showcase.py written from this notebook, built __SHOWCASE_BUILT__")
-ARM_LABEL = {"frame_ccmp": "SciGraphIR (frame graph + CCMP)", "frame_ccmp_off": "frame graph, CCMP gate off",
-             "frame_nocc": "frame graph, no CCMP", "openie": "OpenIE graph"}
+ARM_LABEL = {"frame_ccmp": 'SciGraphIR (SciAfford graph + CCMP)', "frame_ccmp_off": 'SciAfford graph, CCMP gate off',
+             "frame_nocc": 'SciAfford graph, no CCMP', "openie": "OpenIE graph"}
 BASE = f"{DRIVE}/outputs/baselines/{DATASET}"
 SHOW = f"{SCAN_OUT}/showcase_{DATASET}"
 cmd = [sys.executable, "-u", "eval/showcase.py", "--dataset", DATASET, "--queries", QUERIES,

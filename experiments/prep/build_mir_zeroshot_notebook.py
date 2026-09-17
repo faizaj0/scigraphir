@@ -9,8 +9,8 @@ THE ROWS. The same two sources as the ResearchBench zero-shot table (Table 9.3):
 
 Each is paired with the multi-view scorer warm start of ITS OWN source (the params json +
 popnet from that source's 5d run), exactly as build_rb_zeroshot_notebook.py pairs them. The
-target-side inputs are properties of MIR's corpus, not of the model: MIR's own probes, the
-operator and semantic component tables on mir_test_v16sc, and the frame graph itself.
+target-side inputs are properties of MIR's corpus, not of the model: MIR's own hypothetical answers, the
+handcrafted scorer and semantic component tables on mir_test_v16sc, and the SciAfford graph itself.
 
 MIR is a single field, so the table has one slice (`all`; every query is stratum "same") and
 the MIR columns R@3 / R@5 / nDCG@5 / mAP. The in-benchmark rows (results/mir/table_mir.md,
@@ -39,7 +39,7 @@ sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 import build_mir_notebook as bm  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 
 HEADER = '''# MIR — zero-shot cross-benchmark transfer (Table 9.3 on MIR)
@@ -53,7 +53,7 @@ tables computed from its corpus, which are properties of the corpus, not of the 
 |---|---|---|
 | 1-2 | paths, bundle, current scripts, Qwen3 | minutes |
 | 3 | engine + fusion sources | 5 min |
-| 4 | MIR component tables on the frame graph (restored from the in-benchmark run's caches) | minutes |
+| 4 | MIR component tables on the SciAfford graph (restored from the in-benchmark run's caches) | minutes |
 | 5 | two predict-only passes, one per source checkpoint | minutes each |
 | 6 | table: R@3, R@5, nDCG@5, mAP, next to the in-benchmark rows | seconds |
 
@@ -146,7 +146,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values())
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -158,11 +158,11 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
     assert '"map":' in overlay["experiments/eval/score_sir4.py"], "score_sir4.py has no mAP; the table needs it"
 
-    # Paths: the in-benchmark MIR cell (frame graph, MIR caches), plus the names the verbatim
+    # Paths: the in-benchmark MIR cell (SciAfford graph, MIR caches), plus the names the verbatim
     # RB component/predict cells expect (RBG = target graph, CACHE_RB = target caches) and a
     # zero-shot output root so nothing collides with the in-benchmark run.
     paths = (bm.PATHS.replace("__EPOCHS__", "10").replace("__BATCH__", "2")
@@ -186,7 +186,7 @@ def main() -> int:
              md("## 3. Engine + fusion sources\n*(cloned from `tomato_ccmp_ablation.ipynb`; the fusion-source blob is regenerated from the repo)*")]
     for i in rb.ENGINE_CELLS:
         cells.append(files_cell if i == 7 else src[i])
-    cells += [md("## 4. MIR component tables on the frame graph, and the frozen sources"),
+    cells += [md('## 4. MIR component tables on the SciAfford graph, and the frozen sources'),
               code(components), code(SOURCES.replace("__TOMATO_RUN__", tomato_run)),
               md("## 5. Zero-shot prediction and scoring"), code(predict), code(ARMS),
               md("## 6. The table"), code(TABLE)]

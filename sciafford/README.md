@@ -1,83 +1,89 @@
-# SciAfford: affordance-lifted graph construction
+# SciAfford: graph construction
 
-This directory builds the knowledge graph that the SciGraphIR graph reasoner walks
-(thesis Chapter 4). Instead of OpenIE entity triples, every paper is lifted into
-**field-neutral, role-typed relations**: what a method *achieves* (function), which
-*limitation* it overcomes, *how* it works (mechanism), and which methods it *builds on*
-or *improves on*. A query is lifted the same way, so a research problem and a paper from
-another field meet on shared function, limitation and mechanism nodes even when they
-share no vocabulary.
+[Repository home](../README.md) · [Code guide](../docs/README.md) · [Retriever](../retriever/README.md)
 
-![SciAfford](../docs/figures/fig_sciafford_affordance.png)
+**The default SciAfford graph combines affordance structure with OpenIE entity context
+and direct paper-to-affordance links.** It is assembled by
+[build_hybrid_graph.py](../experiments/prep/build_hybrid_graph.py) and stored with the
+`_hyb` suffix used by the training workflows.
 
-## Three stages
+Affordance representations describe the functions papers provide, limitations they
+address, mechanisms they use and methods they build on. Problem requirements identify
+starting concepts. OpenIE adds query entity seeds and entity-to-paper mention edges;
+direct paper-to-affordance links make contribution capabilities accessible in one hop.
 
-| Stage | Script | What it does | Cost |
-|---|---|---|---|
-| 1. Paper frames | `extract_frames.py --side doc` | One schema-guided LLM call per paper (title + abstract) returning task, domain, contributions with `achieves` / `overcomes` / `mechanism` / `builds_on` / `improves_on`, task limitations, findings and causal findings. Resumable JSONL cache. | paid, once per corpus |
-| 2. Corpus graph | `build_greasoner_dataset.py` | Converts frames to typed nodes and edges, merges near-duplicate nodes (BGE-large cosine at `--tau_canon`), adds typed similarity edges between mutual 8-nearest neighbours, and writes the graph in the engine's `stage1` layout. | free, local |
-| 3. Query seeds | `extract_frames.py --side query`, then `build_greasoner_dataset.py` | One LLM call per query extracts task, required functions, current methods and open limitations; each phrase is snapped to at most 3 same-type graph nodes with cosine at least 0.60 and becomes a start node. | one call per query |
+## Files and stages
 
-Settings used in the thesis (Appendix, "Graph Construction Details"):
+| Stage | Code | Input → output |
+|---|---|---|
+| Paper affordances | [extract_affordances.py](extract_affordances.py), `--side doc` | Titles/abstracts → contribution capabilities. |
+| Problem requirements | [extract_affordances.py](extract_affordances.py), `--side query` | Research questions → requirements, methods and limitations. |
+| Affordance component | [build_greasoner_dataset.py](build_greasoner_dataset.py) | Representations → typed graph and query seeds (`_v16sc`). |
+| OpenIE component | [run_index.sh](../retriever/run_index.sh) | Corpus/questions → entities, mention edges and linked query entities. |
+| **Default graph** | [build_hybrid_graph.py](../experiments/prep/build_hybrid_graph.py) | Both components → SciAfford graph with entity context and paper-to-affordance links (`_hyb`). |
 
-| Setting | Value |
-|---|---|
-| Extraction model | `gpt-4o-mini`, temperature 0.2, input truncated to 3,000 characters |
-| Embedding model | `BAAI/bge-large-en-v1.5` |
-| Near-duplicate merging | cosine >= 0.95 (`--tau_canon 0.95`; the script default is 0.85, so pass the flag) |
-| Similarity edges | mutual 8-NN, cosine in [0.80, 0.995], type-specific relation names |
-| Query seeding | top-3 nodes per phrase, cosine >= 0.60 |
+The affordance builder merges similar concepts, adds typed similarity links and maps
+query phrases to graph nodes. The final builder preserves that structure, adds the
+OpenIE query entities that pass its degree cap and have paper links, and adds direct
+links from papers to the capabilities represented through their methods, tasks and findings.
 
-## Node and edge grammar
+## Graph vocabulary
 
-```
-paper  --contributes-->  method        method  --achieves-->   function
-paper  --reports----->  finding       method  --overcomes-->  limitation
-paper  --addresses--->  task          method | finding --works_via--> mechanism
-paper  --in_field---->  domain        task | method --limited_by--> limitation
-finding --concerns--->  function      method | finding --builds_on | improves_on--> method
-finding --explains--->  limitation
-similarity edges: is_specific_case_of (function), is_variant_of (method), shares_purpose (task),
-                  shares_mechanism (mechanism), same_limitation (limitation), corroborates (finding)
-```
+| Source | Relation examples | Target |
+|---|---|---|
+| Paper | `contributes`, `reports`, `addresses`, `in_field` | Method, finding, task, domain |
+| Method | `achieves`, `overcomes`, `works_via` | Function, limitation, mechanism |
+| Method or finding | `builds_on`, `improves_on` | Method |
+| Task or method | `limited_by` | Limitation |
+| Finding | `concerns`, `explains` | Function, limitation |
+| Entity | `mentioned_in` | Paper |
+| Paper | `paper_achieves`, `paper_overcomes`, `paper_works_via`, `paper_limited_by`, `paper_concerns`, `paper_explains` | Affordance concept |
 
-Node names carry their type as a prefix (`[function] partition an input into labeled
-regions`); paper nodes are the document ids.
+Concept names include their type, such as `[function] partition an input into labeled
+regions`. Paper nodes use document IDs. Similarity relations connect concepts of the same type.
 
-## Commands
+## Build the default graph
 
-Corpora live at `retriever/data/<dataset>_<split>/raw/{documents.json, <split>.json}`
-(see `experiments/prep/stage_sir4.py`). All paths resolve through `../scigraphir_paths.py`;
-`SCIGRAPHIR_ROOT` overrides the repository root when running from elsewhere.
+First follow [setup and data](../docs/SETUP.md) and stage a corpus with
+[stage_sir4.py](../experiments/prep/stage_sir4.py). Run from the repository root using
+Python 3.12 and the installed graph engine. Affordance extraction and OpenIE construction
+use `OPENAI_API_KEY` and make paid calls for uncached items. Existing matching components
+can be reused.
 
 ```bash
-export OPENAI_API_KEY=...          # or put it in sciafford/.env.local (git-ignored)
-cd sciafford
+export SCIGRAPHIR_ROOT="$PWD"
+for split in train test; do
+  for side in doc query; do
+    python sciafford/extract_affordances.py --dataset sir4_physics \
+      --split "$split" --side "$side" --workers 16
+  done
+  python sciafford/build_greasoner_dataset.py --dataset sir4_physics \
+    --split "$split" --tau_canon 0.95 --no_entity_seeds --no_answer_seeds
+  bash retriever/run_index.sh "sir4_physics_${split}"
+done
 
-# Stage 1 and the query side of Stage 3 (paid, resumable)
-for s in test train; do for side in doc query; do
-  python3 extract_frames.py --dataset sir4_physics --side $side --split $s --workers 128
-done; done
+python experiments/prep/build_hybrid_graph.py --dataset sir4_physics --cap 30
 
-# Stages 2 and 3 (free)
-for s in test train; do
-  python3 build_greasoner_dataset.py --dataset sir4_physics --split $s --tau_canon 0.95 \
-      --no_entity_seeds --no_probe_seeds
+for split in train test; do
+  python experiments/eval/audit_graph.py --dataset sir4_physics \
+    --split "$split" --suffix hyb --sample 40
 done
 ```
 
-Outputs: `retriever/data/<dataset>_<split>_v16sc/processed/stage1/{nodes.csv, edges.csv,
-relations.csv, <split>.json}` (`v16sc` is the graph tag the engine configs expect). Audit them
-with `experiments/eval/audit_graph.py` (dangling edges, zero-seed queries, hub nodes, one-hop
-gold reachability).
+The merge step runs locally without further LLM calls. By default it includes only
+query-seed entities under the degree cap; `--all-entities` is an optional expansion.
 
-## Other files
+The graph used by the full method is written to
+`retriever/data/<dataset>_<split>_hyb/`, with `raw/documents.json` and a
+`processed/stage1/` directory containing `nodes.csv`, `edges.csv`, `relations.csv`
+and `<split>.json`. The input components remain available for construction and comparisons.
 
-- `make_noent_dataset.py` derives the no-entity-seed variant of a built graph without
-  rebuilding it (TOMATO-Star seed ablation).
-- `../experiments/prep/build_hybrid_graph.py` builds the merged-graph variant (`*_hyb`):
-  the SciAfford graph plus the query's OpenIE entity seeds, entity-to-paper mention edges
-  and paper-to-frame shortcut edges.
-- `../retriever/run_index.sh` builds the OpenIE entity graph with the stock engine indexer.
-  It is the construction control ("+ Graph Reasoner (OpenIE graph)" row).
-- `cache/` holds the frame JSONL caches and concept embeddings (git-ignored).
+## Training and component comparisons
+
+Start with the [default SIR-4 graph notebook](../experiments/notebooks/colab_sir4_hyb.ipynb).
+It runs the default graph with and without CCMP using the learned multi-view semantic scorer.
+
+- The `_v16sc` graph is the affordance component used before the final merge and in comparisons.
+- The OpenIE-only graph is a component and a graph-construction control.
+- [make_noent_dataset.py](make_noent_dataset.py) prepares a seed ablation of the affordance component.
+- The [preparation runbook](../experiments/RUNBOOK.md) describes component bundles and the default graph workflow.

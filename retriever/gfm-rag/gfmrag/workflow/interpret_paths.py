@@ -3,7 +3,7 @@ interpret_paths.py -- path interpretations for a trained fusion checkpoint.
 
 Same construction as sft_training (config, datasets, model, trainer) with no training: the
 checkpoint is loaded, then FusionSFTTrainer.interpret() runs the NBFNet-style gradient beam
-search from each requested query's seed frames to its best-ranked gold and records the CCMP
+search from each requested query's seed nodes to its best-ranked gold and records the CCMP
 responsibility along every path. Output: one JSON.
 
     python -m gfmrag.workflow.interpret_paths --config-path config/gfm_reasoner \\
@@ -11,7 +11,7 @@ responsibility along every path. Output: one JSON.
         datasets.cfgs.root=... datasets.train_names=[G] datasets.valid_names=[G] \\
         model.semantic=mlp model.cqig=false \\
         +interp.ckpt=/path/model_best.pth +interp.qids_file=/path/qids.json \\
-        +interp.out=/path/paths.json +interp.probes=/path/probes_test.jsonl \\
+        +interp.out=/path/paths.json +interp.answers=/path/probes_test.jsonl \\
         hydra.run.dir=/path/run
 """
 try:  # same torchvision shim as sft_training
@@ -82,7 +82,7 @@ def main(cfg: DictConfig) -> None:
         trainer.gate_decomposition(qids, cfg.interp.out, golds=golds, num_beam=int(cfg.interp.get("num_beam", 10)),
                                    path_topk=int(cfg.interp.get("path_topk", 5)), max_golds=int(cfg.interp.get("max_golds", 2)))
     else:
-        trainer.interpret(qids, cfg.interp.out, probes_path=cfg.interp.get("probes"),
+        trainer.interpret(qids, cfg.interp.out, answers_path=cfg.interp.get("answers", cfg.interp.get("probes")),
                           num_beam=int(cfg.interp.get("num_beam", 10)), path_topk=int(cfg.interp.get("path_topk", 5)),
                           max_golds=int(cfg.interp.get("max_golds", 2)), top_views=int(cfg.interp.get("top_views", 3)),
                           do_paths=bool(int(cfg.interp.get("paths", 1))), golds=golds,

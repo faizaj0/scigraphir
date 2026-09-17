@@ -21,7 +21,7 @@ for d in DATASETS:
     assert info["resp_keys"] and model_environment_values["CCMP_GATE"] == "1"
     selected_cases = copy.deepcopy([c for c in CASES if c["dataset"] == d])
     for case in selected_cases:
-        # Original figure measurements came from the frame checkpoint/graph.
+        # Original figure measurements came from the affordance representation checkpoint/graph.
         # Keep them as provenance, but do not call merged results a reproduction failure.
         case["historical_reference_applicable"] = selection["family"] == "frame" and not case.get("selection_source")
     case_file = f"{RUNS}/ccmp_mechanism_cases_{d}.json"

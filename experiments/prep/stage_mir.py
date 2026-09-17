@@ -50,9 +50,9 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)                 # experiments/
-CARGO = os.path.dirname(ROOT)
+REPO_ROOT = os.path.dirname(ROOT)
 SRC = f"{ROOT}/data/mir"                     # the four CSVs from the MIR GitHub repository
-KG_DATA = f"{CARGO}/retriever/data"    # where scigraphir_paths.corpus_dir(split) resolves
+KG_DATA = f"{REPO_ROOT}/retriever/data"    # where scigraphir_paths.corpus_dir(split) resolves
 MIN_ABSTRACT = 100                           # chars; below this the "abstract" is punctuation
 
 FILES = {"train": "train_chronological_df.csv", "augmented": "augmented_train_chronological.csv",
@@ -71,7 +71,7 @@ def load(name: str) -> pd.DataFrame:
 
 
 def corpus_of(*dfs: pd.DataFrame) -> tuple[dict, list]:
-    """{cited id: abstract} over the given frames, dropping junk abstracts. Returns (corpus, dropped ids)."""
+    """{cited id: abstract} over the given affordance representations, dropping junk abstracts. Returns (corpus, dropped ids)."""
     corpus, dropped = {}, []
     for df in dfs:
         for cid, txt in df.groupby("cited_paper_id")["cited_paper_abstracts"].first().items():

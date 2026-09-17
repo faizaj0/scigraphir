@@ -37,8 +37,8 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-sys.path.insert(0, CARGO)
+REPO_ROOT = os.path.dirname(ROOT)
+sys.path.insert(0, REPO_ROOT)
 
 from scigraphir_paths import add_dataset_arg, banner, corpus_dir, set_dataset  # noqa: E402
 

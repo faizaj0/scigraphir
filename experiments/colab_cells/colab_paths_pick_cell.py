@@ -1,6 +1,6 @@
 # ===== Path interpretations for HAND-PICKED (query, gold) pairs, CCMP gate on vs off, wider beam =====
 # Paste into the showcase kernel AFTER cell 5 has run for the dataset (it uses ARMS, model_env, hydra_common,
-# sh, SCAN_OUT, RUNS, PROBES, SECTIONS). Needs the engine: if cell 1 said NEED_ENGINE False, set
+# sh, SCAN_OUT, RUNS, hypothetical answers, SECTIONS). Needs the engine: if cell 1 said NEED_ENGINE False, set
 # NEED_ENGINE = True and re-run cells 2b-4 first. Outputs: SCAN_OUT/hops_pick_<arm>.json and a diff table.
 PICK = {   # query id -> gold ids (SIR-4 CS examples; edit freely)
     "10.48550_arxiv.2601.22474": ["q:ac2856c33ccdf7be", "10.1037/h0061626"],   # LLM latent learning -> Tolman 1930 / 1948
@@ -26,7 +26,7 @@ def paths_pick(name, ckpt, graph, skey, gate=None):
     rl = f"{RUNS}/hops_pick_{name}"; os.makedirs(rl, exist_ok=True)
     print(f"[paths] {name}" + (f" gate={'on' if gate else 'off'}" if gate is not None else ""))
     rc = sh("python -u -m gfmrag.workflow.interpret_paths " + hydra_common(graph) +
-            f"+interp.ckpt={ckpt} +interp.qids_file={PK_Q} +interp.out={out} " + (f"+interp.probes={PROBES} " if PROBES else "") +
+            f"+interp.ckpt={ckpt} +interp.qids_file={PK_Q} +interp.out={out} " + (f"+interp.answers={ANSWERS} " if ANSWERS else "") +
             f"+interp.paths=1 +interp.golds_file={PK_G} +interp.max_golds=8 +interp.top_views={TOP_VIEWS} "
             f"+interp.num_beam={NUM_BEAM} +interp.path_topk={PATH_TOPK} hydra.run.dir={rl}",
             "/content/gfm-rag", extra=env_, log=f"{rl}/console.log", check=False)

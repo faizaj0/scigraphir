@@ -2,21 +2,21 @@
 bundle.py -- zip the code and staged data the Colab run needs, ready for Drive.
 
 THE ZIP MIRRORS THE REPO. Every entry's path inside the zip is its path relative
-to the CARGO root, so on Colab you unzip to /content/scigraphir, export
+to the SciGraphIR root, so on Colab you unzip to /content/scigraphir, export
 SCIGRAPHIR_ROOT=/content/scigraphir, and every script resolves exactly as it does locally.
 No copying files into place, and no second layout to keep in sync.
 
 GRAPHS ARE NOW INCLUDED, which reverses this file's original policy. The old
-rationale was that Colab should rebuild them from the frame caches, so a stale
-graph could never be paired with fresh frames. That was right when the build was
+rationale was that Colab should rebuild them from the affordance representation caches, so a stale
+graph could never be paired with fresh affordance representations. That was right when the build was
 unsettled. It is wrong now: the graphs are built at a threshold chosen from
 measured evidence (tau_canon 0.95), audited, and verified to rebuild
 byte-identically. Rebuilding on Colab would run a different torch and
 sentence-transformers against the same inputs and could silently diverge from
 the artefact that was actually audited. Ship the audited one.
 
-The frame, probe and embedding caches are included when they exist, because they
-are the expensive artefacts: re-extracting 24,384 document frames because a zip
+The affordance representation, hypothetical answer and embedding caches are included when they exist, because they
+are the expensive artefacts: re-extracting 24,384 document affordance representations because a zip
 was thin is the single worst way to lose money in this pipeline.
 
 Usage
@@ -33,8 +33,8 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-sys.path.insert(0, CARGO)
+REPO_ROOT = os.path.dirname(ROOT)
+sys.path.insert(0, REPO_ROOT)
 
 
 # Directories never walked when packaging a CODE tree. `cache/` and `graph/` are
@@ -102,33 +102,33 @@ def main() -> int:
                          "upload time. Ignored under --slim, which drops it already.")
     ap.add_argument("--slim", action="store_true",
                     help="ship only what a semantic-scorer run reads: corpus raw/, "
-                         "hypothetical answers, code. No graphs, no frames, no "
-                         "embedding cache, no operator components.")
+                         'hypothetical answers, code. No graphs, no affordance representations, no '
+                         'embedding cache, no handcrafted scorer components.')
     a = ap.parse_args()
 
     import scigraphir_paths as cp
     cp.set_dataset(a.dataset)
     out = a.out or f"{ROOT}/{a.dataset}_bundle.zip"
 
-    kg, v16 = f"{CARGO}/retriever", f"{CARGO}/sciafford"
+    kg, v16 = f"{REPO_ROOT}/retriever", f"{REPO_ROOT}/sciafford"
 
     def arc(src: str) -> str:
-        """Path inside the zip = path relative to the CARGO root.
+        """Path inside the zip = path relative to the SciGraphIR root.
 
         This is the whole portability trick: unzip to /content/scigraphir, set
         SCIGRAPHIR_ROOT=/content/scigraphir, and scigraphir_paths resolves every corpus, cache
         and graph without a single path being special-cased for Colab.
         """
-        return os.path.relpath(src, CARGO)
+        return os.path.relpath(src, REPO_ROOT)
 
-    CODE = [f"{CARGO}/scigraphir_paths.py", v16,
-            f"{kg}/probes", f"{kg}/eval",
+    CODE = [f"{REPO_ROOT}/scigraphir_paths.py", v16,
+            f"{kg}/hypothetical_answers", f"{kg}/eval",
             f"{kg}/precompute",
             # transfer/ holds make_rb_sets.py and paired_bootstrap.py, which the
             # ResearchBench notebook shells out to on Colab. Omitting it made the
             # notebook resolve every path correctly against the local repo and then
             # fail on Colab, which is the worst possible place to find out.
-            f"{ROOT}/eval", f"{ROOT}/prep", f"{ROOT}/transfer", f"{ROOT}/PLAN.md"]
+            f"{ROOT}/eval", f"{ROOT}/prep", f"{ROOT}/transfer"]
 
     # SOME CORPORA ARE EVALUATION-ONLY. ResearchBench has no train split and never
     # will: it is the held-out benchmark for the transfer experiment. Asking for its
@@ -151,8 +151,8 @@ def main() -> int:
     DATA = [f"{cp.corpus_dir(s)}/raw" if a.slim else cp.corpus_dir(s) for s in SPLITS]
 
     # Built graphs. Needed by BOTH phases, not just training:
-    # precompute_operator_components reads nodes.csv to order its columns to the
-    # graph's document nodes, so shipping the graph is what keeps the operator
+    # precompute_handcrafted_components reads nodes.csv to order its columns to the
+    # graph's document nodes, so shipping the graph is what keeps the handcrafted scorer
     # components aligned with the model that consumes them.
     if not a.slim:
         for split in SPLITS:
@@ -163,13 +163,13 @@ def main() -> int:
     # Expensive caches, only if already built.
     for split in SPLITS:
         if not a.slim:
-            # Extracted frames are graph-construction input; the scorer never
+            # Extracted affordance representations are graph-construction input; the scorer never
             # reads them.
             for side in ("doc", "query"):
-                DATA.append(cp.frames_path(side, split))
-        DATA.append(cp.probes_path(split))
+                DATA.append(cp.affordances_path(side, split))
+        DATA.append(cp.answers_path(split))
     # OPTIONAL: the BGE embedding cache. Colab's cell 5b regenerates it, so its
-    # absence is normal for any domain whose operator was never fit locally.
+    # absence is normal for any domain whose handcrafted scorer was never fit locally.
     # Reporting it as MISSING sent the reader chasing a non-problem, which is
     # worse than not reporting it -- a warning that cries wolf gets ignored when
     # something real is missing.
@@ -197,7 +197,7 @@ def main() -> int:
     from stage_sir4 import DOMAINS
     dom = a.dataset.replace("sir4_", "").replace("_smoke", "")
     if dom in DOMAINS:
-        DATA.append(f"{CARGO}/benchmark/data/benchmark/{DOMAINS[dom][1]}/sets.json")
+        DATA.append(f"{REPO_ROOT}/sir-4/data/benchmark/{DOMAINS[dom][1]}/sets.json")
     else:
         print(f"note: {dom!r} is not a known domain; no sets.json will be bundled")
 

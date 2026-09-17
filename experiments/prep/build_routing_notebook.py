@@ -54,7 +54,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 
 FUSION_REL = rb.FUSION_REL + ["gfmrag/models/ultra/layers.py"]
@@ -108,7 +108,7 @@ drive.mount('/content/drive')
 
 DRIVE    = "/content/drive/MyDrive/cargo-gfmrag"
 DATASET  = "__DATASET__"
-GRAPH    = "__GRAPH__"                               # graph suffix: v16sc = SciAffordGraph, hyb = merged graph (build_hybrid_graph.py)
+GRAPH    = "__GRAPH__"                               # graph suffix: v16sc = SciAfford graph, hyb = merged graph (build_hybrid_graph.py)
 TRAIN, TEST = f"{DATASET}_train_{GRAPH}", f"{DATASET}_test_{GRAPH}"
 BUNDLE   = f"{DRIVE}/{DATASET}_bundle.zip"
 EXTRA_BUNDLES = __EXTRA__                            # add-on zips unpacked after the bundle (e.g. tomato_hyb_bundle.zip)
@@ -160,7 +160,7 @@ for _z in EXTRA_BUNDLES:
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -178,7 +178,7 @@ QUERIES = f"{DATA_ROOT}/{DATASET}_test/raw/test.json"
 for s, g in (("train", TRAIN), ("test", TEST)):
     for label, p in ((f"corpus {s}", f"{cp.corpus_dir(s)}/raw/documents.json"),
                      (f"queries {s}", f"{cp.corpus_dir(s)}/raw/{s}.json"),
-                     (f"probes {s}", cp.probes_path(s)),
+                     (f"hypothetical answers {s}", cp.answers_path(s)),
                      (f"graph {s}", f"{DATA_ROOT}/{g}/processed/stage1/nodes.csv")):
         assert os.path.exists(p), f"missing {label}: {p}"
         print(f"  ok  {label:13} {p.replace(SCIGRAPHIR_ROOT, '<root>')}")
@@ -198,7 +198,7 @@ assert transformers.__version__.startswith("4."), f"transformers {transformers._
 print("ready | transformers", transformers.__version__)
 '''
 
-HELPERS = '''# 4a. Caches (graph-keyed) and the operator component tables.
+HELPERS = '''# 4a. Caches (graph-keyed) and the handcrafted scorer component tables.
 import numpy as np
 if os.path.isdir(f"{CACHE}/op_emb"):
     shutil.copytree(f"{CACHE}/op_emb", f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", dirs_exist_ok=True)
@@ -229,12 +229,12 @@ for s, g in (("train", TRAIN), ("test", TEST)):
         c = f"{CACHE}/{g}_operator_components{OP_SLUG}.npz"
         if os.path.exists(c): shutil.copy(c, opc(g))
         else:
-            sh(f"python3 -u precompute/precompute_operator_components.py "
+            sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                f"--dataset {DATASET} --graph {g} --split {s} --model {OP_MODEL}", KGDIR)
             shutil.copy(opc(g), c)
     zz = np.load(opc(g), allow_pickle=True)
     assert "qwen" in str(zz["encoder"]).lower(), f"{opc(g)} was built with {zz['encoder']!r}"
-    print(f"  {g:22} operator components dense {zz['dense'].shape}")
+    print(f"  {g:22} handcrafted scorer components dense {zz['dense'].shape}")
 shutil.copytree(f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", f"{CACHE}/op_emb", dirs_exist_ok=True)
 '''
 
@@ -281,7 +281,7 @@ TRAIN_ARMS = '''# 5. The arms. One environment, one variable per arm. Every arm 
 # 3 steps) so a wrong code path fails in minutes, not hours; the smoke log is asserted to
 # contain the construction line of exactly the routing it should have.
 BASE_ENV = dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
-                OPERATOR_COMPONENTS=opc(TRAIN), OPERATOR_COMPONENTS_TEST=opc(TEST),
+                HANDCRAFTED_COMPONENTS=opc(TRAIN), HANDCRAFTED_COMPONENTS_TEST=opc(TEST),
                 SEMANTIC_COMPONENTS=semc(TRAIN), SEMANTIC_COMPONENTS_TEST=semc(TEST),
                 SEMANTIC_CKPT=SEM_CKPT, SEMANTIC_POPNET=SEM_POP, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -599,7 +599,7 @@ def main() -> int:
                     help="comma list of arms to RETRAIN with --val-seed after the table, as a run-to-run check, "
                          "e.g. control,ccmp_residual")
     ap.add_argument("--val-seed", type=int, default=7)
-    ap.add_argument("--graph-suffix", default="v16sc", help="graph directory suffix: v16sc (SciAffordGraph) or hyb (merged graph)")
+    ap.add_argument("--graph-suffix", default="v16sc", help="graph directory suffix: v16sc (SciAfford graph) or hyb (merged graph)")
     ap.add_argument("--extra-bundle", default="", help="comma list of add-on zips on Drive to unpack after the bundle")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -622,7 +622,7 @@ def main() -> int:
     assert "_route_attention" in fusion_files["/content/gfm-rag/gfmrag/models/ultra/models.py"], "engine lacks the attention hook"
     assert "per-query weights" in fusion_files["/content/gfm-rag/gfmrag/models/ultra/layers.py"], "layers.py lacks 2-D edge weights"
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -634,7 +634,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready (routing baselines included)')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
 
     # The CCMP_LR patch cell, extended so the attention head joins the separate lr group.

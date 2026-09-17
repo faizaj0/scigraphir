@@ -1,0 +1,54 @@
+{
+  "split": "physics_train_low",
+  "source": "04_resolved/physics_train_low.jsonl",
+  "papers_in": 8072,
+  "decomposed": 7067,
+  "queries": 3087,
+  "eval_rows": 7963,
+  "documents": 10352,
+  "title_only_documents": 912,
+  "families": 3087,
+  "set_aware_queries": 3087,
+  "alternative_only_documents": 3076,
+  "queries_with_alternative_only_golds": 2019,
+  "eval_files": {
+    "eval.json": "set-aware, one row per query, THE evaluation",
+    "eval_primary.json": "D1 only, flat, TOMATO-comparable"
+  },
+  "stratum": {
+    "same": 7397,
+    "cross": 566
+  },
+  "domain_distance": {
+    "same_primary": 6476,
+    "disjoint": 561,
+    "overlap_1": 500,
+    "overlap_2plus": 181
+  },
+  "field_confidence": {
+    "ambiguous": 1026,
+    "clear": 6697,
+    "None": 240
+  },
+  "label_basis": {
+    "topics": 7716,
+    "primary_fallback": 7,
+    "None": 240
+  },
+  "cross_rows_on_ambiguous_field": 187,
+  "queries_without_stratum_evidence": 15,
+  "queries_partially_labelled": 205,
+  "primary_rows_without_stratum_evidence": 240,
+  "uniqueness_after_resolution": {
+    "not_falsified": 925,
+    "falsified": 2024,
+    "resolution_incomplete": 138
+  },
+  "excluded": {
+    "primary_incomplete": 3980
+  },
+  "options": {
+    "drop_title_only": false,
+    "keep_partial": false
+  }
+}

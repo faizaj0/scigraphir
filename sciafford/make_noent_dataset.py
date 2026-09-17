@@ -1,5 +1,5 @@
 """
-make_noent_dataset.py -- produce the `--no_entity_seeds` variant of a v16sc dataset
+make_noent_dataset.py -- produce the `--no_entity_seeds` variant of a SciAfford dataset
 WITHOUT rebuilding the graph.
 
 WHY THIS IS NOT A REBUILD. In build_greasoner_dataset.py the node map (`new_type`)
@@ -123,7 +123,7 @@ def main() -> int:
             print(f"  {f:16s} identical={same}  hardlinked={linked}")
             ok &= same
 
-        # The operator caches must still be present and shared.
+        # The handcrafted scorer caches must still be present and shared.
         for f in ("operator_components.npz", "operator_scores.npz"):
             s, d = f"{src_dir}/{f}", f"{dst_dir}/{f}"
             if os.path.exists(s):

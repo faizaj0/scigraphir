@@ -5,24 +5,23 @@ as weight: (head, relation, tail) -> (...), r^-1 = inverse relation), one block 
 
     Query (field)        "..."
     Inspiration (field)  Title (year)
-    Rank of i*           cosine . scorer . entity graph . SciAffordGraph gate off -> with CCMP . SciGraphIR gate off -> with CCMP
-    Routes               w: (node, rel, node) -> (node, rel[gate g], i*)      the frame graph's top routes, CCMP gate on the hop where it acts
+    Rank of i*           cosine . scorer . entity graph . SciAfford graph gate off -> with CCMP . SciGraphIR gate off -> with CCMP
+    Routes               w: (node, rel, node) -> (node, rel[gate g], i*)      the SciAfford graph's top routes, CCMP gate on the hop where it acts
     Entity graph         w: (...)                                              the OpenIE graph's route, or "no seed-to-gold route"
 
 Same inputs as route_circles_tikz.py (hops_frame_ccmp / _off / openie in --dir, optional --candidates for the baselines).
 
-    python3 eval/route_table_tex.py --dataset sir4_cs --dir results/qualitative/drive_scan_sir4_cs \
-        --pair 10.48550_arxiv.2603.03985=10.1111/j.1749-6632.2010.05443.x --pair ... --n-routes 2 --out ../figures/tab_route_paths_cs --compile
+    python3 eval/route_table_tex.py --dataset sir4_cs --dir results/qualitative/drive_scan_sir4_cs         --pair 10.48550_arxiv.2603.03985=10.1111/j.1749-6632.2010.05443.x --pair ... --n-routes 2 --out ../figures/tab_route_paths_cs --compile
 """
 import argparse, json, os, re, shutil, subprocess
 R = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def frame_arm(d, prefix="hops_", want="auto"):
-    """which SciAffordGraph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAffordGraph) when present,
-    else the older frame-only graph (frame_ccmp). Returns (arm name, label suffix)."""
+    """which SciAfford graph arm the hops files hold: the merged graph (hyb_ccmp, the current SciAfford graph) when present,
+    else the older SciAfford graph (frame_ccmp). Returns (arm name, label suffix)."""
     if want == "auto": want = "hyb_ccmp" if os.path.exists(f"{d}/{prefix}hyb_ccmp.json") else "frame_ccmp"
-    return want, ("merged graph" if want.startswith("hyb") else "frame-only graph, outdated")
+    return want, ("merged graph" if want.startswith("hyb") else 'SciAfford graph, outdated')
 
 
 def tex(s):
@@ -72,21 +71,21 @@ def main():
     ap.add_argument("--dataset", required=True); ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_")
     ap.add_argument("--pair", action="append", required=True, help="query=gold, repeatable; one block each")
     ap.add_argument("--n-routes", type=int, default=2); ap.add_argument("--max-hops", type=int, default=6)
-    ap.add_argument("--candidates", default=None); ap.add_argument("--docs", default=None); ap.add_argument("--queries", default=None); ap.add_argument("--quartet", default=None)
+    ap.add_argument("--candidates", default=None); ap.add_argument("--docs", default=None); ap.add_argument("--queries", default=None); ap.add_argument("--sir4", "--quartet", dest='sir4', default=None)
     ap.add_argument("--out", required=True); ap.add_argument("--compile", action="store_true"); ap.add_argument("--label", default="tab:route-paths")
-    ap.add_argument("--arm", default="auto", help="SciAffordGraph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
+    ap.add_argument("--arm", default="auto", help="SciAfford graph arm: auto (hyb_ccmp if present, else frame_ccmp), hyb_ccmp or frame_ccmp")
     a = ap.parse_args(); D = a.dataset
     docs = json.load(open(a.docs or f"{R}/retriever/data/{D}_test/raw/documents.json"))
     queries = {x["id"]: x for x in json.load(open(a.queries or f"{R}/retriever/data/{D}_test/raw/test.json"))}
     qf = {}
-    qp = a.quartet or f"{R}/benchmark/data.nosync/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
+    qp = a.sir4 or f"{R}/sir-4/data/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
     if os.path.exists(qp):
         for x in json.load(open(qp)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qf[(x["id"], d)] = m
     def load(name):
         p = f"{a.dir}/{a.prefix}{name}.json"
         return {(r["id"], t["doc"]): (r, t) for r in json.load(open(p)) for t in r["targets"]} if os.path.exists(p) else {}
-    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAffordGraph arm:", ARM, f"({ARMLAB})")
+    ARM, ARMLAB = frame_arm(a.dir, a.prefix, a.arm); print("SciAfford graph arm:", ARM, f"({ARMLAB})")
     ON, OFF, OIE = load(ARM), load(f"{ARM}_off"), load("openie")
     cand = {}
     if a.candidates and os.path.exists(a.candidates):
@@ -104,7 +103,7 @@ def main():
         def arrow(o, n): return ("%s $\\rightarrow$ %s" % (o, n)) if (o and n and o != n) else str(n)
         ranks = ["cosine %s" % rk.get("dense"), "scorer %s" % rk.get("scorer")]
         if rki.get("graph"): ranks.append("entity graph %s" % rki["graph"])
-        ranks.append("\\textsc{SciAffordGraph} %s" % arrow(rko.get("graph"), rk.get("graph")))
+        ranks.append("\\textsc{SciAfford graph} %s" % arrow(rko.get("graph"), rk.get("graph")))
         ranks.append("\\textsc{SciGraphIR} %s" % arrow(rko.get("fused"), rk.get("fused")))
         rows = ["\\textbf{Query} \\newline {\\scriptsize\\color{muted}%s} & ``%s'' \\\\" % (tex(fq.strip()), tex(question)),
                 "\\textbf{Inspiration $i^{\\star}$} \\newline {\\scriptsize\\color{muted}%s} & \\emph{%s}%s \\\\" % (tex(fd.strip()), tex(title), (" (%s)" % year) if year else ""),

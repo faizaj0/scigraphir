@@ -64,9 +64,9 @@ TOP_PATHS = 5
 BEAM_SIZE = 10
 ```
 
-Merged-graph CCMP checkpoints are preferred under `outputs/sir4_hyb/`, with matching `_test_hyb` graphs and field scorers. The standard e10 runs are preferred, then other available merged CCMP runs. A frame checkpoint is an explicit fallback only if no merged checkpoint exists. A present merged checkpoint with missing or incompatible assets causes an error. The notebook prints and records its exact selection.
+Merged-graph CCMP checkpoints are preferred under `outputs/sir4_hyb/`, with matching `_test_hyb` graphs and field scorers. The standard e10 runs are preferred, then other available merged CCMP runs. A affordance representation checkpoint is an explicit fallback only if no merged checkpoint exists. A present merged checkpoint with missing or incompatible assets causes an error. The notebook prints and records its exact selection.
 
-Results are written to `outputs/scientific_paths/<dataset>/<merged-or-frame>/<precision>/<manifest-hash>/` on Drive:
+Results are written to `outputs/scientific_paths/<dataset>/<merged-or-affordance representation>/<precision>/<manifest-hash>/` on Drive:
 
 | File | Use |
 |---|---|

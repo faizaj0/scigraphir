@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 route_tikz.py -- the routes SciGraphIR takes for one (query, gold) pair, as a TikZ figure in the thesis style
-(fig_graph_cs_creativity.tex): the query at the top, one column per top-weighted route, typed frames, the
+(fig_graph_cs_creativity.tex): the query at the top, one column per top-weighted route, typed affordance nodes, the
 relation on every edge, the CCMP gate where it differs from 1, the gold at the bottom, and the rank ladder
 + path weights (with / without the gate) underneath.
 
@@ -55,7 +55,7 @@ def main():
         for row in rd:
             if len(row) >= 3 and row[1] == "in_field": dom[row[0]].append(row[2].replace("[domain] ", ""))
     qf = {}
-    qp = f"{R}/benchmark/data.nosync/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
+    qp = f"{R}/sir-4/data/benchmark/{D.replace('sir4_', '')}_test_final/eval.json"
     if os.path.exists(qp):
         for x in json.load(open(qp)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qf[(x["id"], d)] = m
@@ -92,7 +92,7 @@ def main():
             ns = [h[0]["head"]] + [x["tail"] for x in h]; return len(ns) == len(set(ns)) and h[-1]["tail"] == g
         oroute = next((p for p in oie[1]["paths"] if osimple(p)), None)
     draw_oie = bool(oie) and not a.no_openie
-    # ---- geometry: frame routes left/centre, the OpenIE column (if any) on the right
+    # ---- geometry: affordance representation routes left/centre, the OpenIE column (if any) on the right
     n = len(routes); ncol = n + (1 if draw_oie else 0)
     xs = {1: [0.0], 2: [-4.6, 4.6], 3: [-6.3, 0.0, 6.3], 4: [-7.8, -2.6, 2.6, 7.8]}[min(ncol, 4)]
     tw = {1: 56, 2: 56, 3: 44, 4: 36}[min(ncol, 4)]; dy = 2.35
@@ -152,10 +152,10 @@ def main():
                 L.append(f"\\node[ent] ({nid}) at ({xo:.1f},{y0 - dy * k:.2f}) {{\\ty{{{ohead}}}\\\\ {body(nd, docs, dom)}}};")
         else:
             L.append(f"\\node[ent, dashed, align=center] (o0) at ({xo:.1f},{y0:.2f}) {{\\ty{{no route}}\\\\ {{\\footnotesize no seed-to-gold route within the reasoner's depth}}}};")
-        L.append(f"\\node[hdr] at ({sum(xs[:n]) / n:.1f},{yh:.2f}) {{SciAffordGraph}};")
+        L.append(f"\\node[hdr] at ({sum(xs[:n]) / n:.1f},{yh:.2f}) {{SciAfford graph}};")
     L.append("% ---- seed edges")
     for i in range(n):
-        L.append(f"\\draw[seed] (q.south) -- ++(0,-0.45) -| " + ("node[pos=0.04, right, font=\\scriptsize, color=black!55] {seed frames of the query} " if i == 0 else "") + f"({names[(i, 0)]}.north);")
+        L.append(f"\\draw[seed] (q.south) -- ++(0,-0.45) -| " + ('node[pos=0.04, right, font=\\scriptsize, color=black!55] {seed nodes of the query} ' if i == 0 else "") + f"({names[(i, 0)]}.north);")
     if draw_oie and oroute:
         L.append(f"\\draw[seed] (q.south) -- ++(0,-0.45) -| node[pos=0.5, above, font=\\scriptsize, color=black!55] {{seed entities}} (o0.north);")
     for i, p in enumerate(routes):
@@ -180,17 +180,17 @@ def main():
                 L.append(f"\\draw[e, color=black!50] (o{k}.south) -- node[rel, left, pos=0.3, color=black!60] {{{rel(h['rel'])}}} (g.north -| {xo * 0.55:.1f},0);")
     L.append("\\end{tikzpicture}\n\n\\vspace{4pt}\n{\\footnotesize\n\\begin{tabular}{@{}l l@{}}")
     rk = t["rank"]; rko = off[1]["rank"] if off else {}; rki = oie[1]["rank"] if oie else {}
-    L.append("\\textbf{rank of the gold} & Qwen3 cosine \\textbf{%s} $\\rightarrow$ multi-view scorer \\textbf{%s} $\\rightarrow$ {+}\\,SciAffordGraph \\textbf{%s} $\\rightarrow$ {+}\\,CCMP \\textbf{%s} \\\\"
+    L.append("\\textbf{rank of the gold} & Qwen3 cosine \\textbf{%s} $\\rightarrow$ multi-view scorer \\textbf{%s} $\\rightarrow$ {+}\\,SciAfford graph \\textbf{%s} $\\rightarrow$ {+}\\,CCMP \\textbf{%s} \\\\"
              % (rk.get("dense"), rk.get("scorer"), rko.get("fused", "--"), rk.get("fused")))
     L.append("\\textbf{path weights} & " + ";\\; ".join(f"route {i + 1} ({'left' if xs[i] < 0 else ('right' if xs[i] > 0 else 'centre')}) \\textbf{{{p['weight']:.2f}}} with CCMP" + (f", {offw[key(p)]:.2f} without" if key(p) in offw else "") for i, p in enumerate(routes)) + " \\\\")
-    L.append("\\textbf{graph channel alone} & SciAffordGraph \\textbf{%s} with CCMP, \\textbf{%s} without%s \\\\" % (rk.get("graph"), rko.get("graph", "--"),
+    L.append("\\textbf{graph channel alone} & SciAfford graph \\textbf{%s} with CCMP, \\textbf{%s} without%s \\\\" % (rk.get("graph"), rko.get("graph", "--"),
              (f";\\; OpenIE entity graph \\textbf{{{rki.get('graph')}}}" + (f" (top route weight {(abs(oroute['weight']) if abs(oroute['weight']) < 0.005 else oroute['weight']):.2f})" if oroute else " (no route)") if rki else "")))
     if base:
         lab = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Embedding", "reasonir": "ReasonIR-8B", "specter2": "SPECTER2", "scincl": "SciNCL"}
         L.append("\\textbf{baselines} & " + ", ".join(f"{lab[k]} {('$>$300' if v >= 10**6 else v)}" for k, v in base.items() if v) + " \\\\")
     L.append("\\end{tabular}}")
     fp = qf.get((q, g), {}).get("field_pair")
-    L.append("\\caption{Routes taken by \\textsc{SciGraphIR} from the query's seed frames to \\emph{%s}%s. Each column is one of the reasoner's top-weighted routes "
+    L.append("\\caption{Routes taken by \\textsc{SciGraphIR} from the query's seed nodes to \\emph{%s}%s. Each column is one of the reasoner's top-weighted routes "
              "(gradient beam search over the per-layer edge weights, as in NBFNet and GFM-RAG); dashed arrows are the seeding step, $r^{-1}$ the inverse relation, "
              "and the CCMP gate on a hop's sender is shown where it differs from 1. Weights are given with CCMP and, where the same route is recorded, with the gate switched off on the same weights. "
              "The right-hand column is the OpenIE entity graph built from the same corpus: its reasoner reaches the paper, when it does, through chains of co-mention rather than through the need the query states.}"

@@ -3,12 +3,13 @@
 make_release_data.py -- package the SIR-4 data a reader needs to reproduce the thesis
 results, as one zip that unpacks onto the repository root.
 
-The repository holds code only. This zip carries, for each requested dataset:
+The benchmark is included under sir-4/dataset/; prepare_data.py unpacks it.
+This optional reproduction bundle also carries cached method inputs. For each dataset:
 
   retriever/data/<dataset>_<split>/raw/                staged corpus and queries
-  sciafford/cache/<dataset>/frames_*.jsonl             LLM frame extractions (Stage 1 and 3)
+  sciafford/cache/<dataset>/frames_*.jsonl             LLM affordance representation extractions (Stage 1 and 3)
   retriever/probes/cache/<dataset>/probes_*.jsonl      hypothetical answers
-  benchmark/data/benchmark/<export>/                   SIR-4 export: sets.json (CompleteSet@k),
+  sir-4/data/benchmark/<export>/                   SIR-4 export: sets.json (CompleteSet@k),
                                                        manifest.json, and for the test split
                                                        eval.json / eval_primary.json
 
@@ -45,11 +46,11 @@ SIR4_EXPORTS = {  # dataset -> (train export, test export); mirrors stage_sir4.D
 
 # Repository layout -> layout of the original development workspace (longest prefix first).
 LEGACY = [
-    ("retriever/probes/", "kg-construction/construct_v2/"),
+    ('retriever/probes/', "kg-construction/construct_v2/"),
     ("sciafford/", "kg-construction-v16/"),
     ("retriever/", "kg-construction/"),
-    ("benchmark/data/", "quartet/data.nosync/"),
-    ("benchmark/", "quartet/"),
+    ("sir-4/data/", "quartet/data.nosync/"),
+    ("sir-4/", "quartet/"),
 ]
 
 
@@ -59,7 +60,7 @@ def main() -> int:
     ap.add_argument("--datasets", default=",".join(SIR4_EXPORTS),
                     help="comma-separated dataset names as used by --dataset elsewhere")
     ap.add_argument("--out", default=None, help="zip path (default <repo>/scigraphir-data-<name>.zip)")
-    ap.add_argument("--include-graphs", action="store_true", help="also add the built *_v16sc graphs")
+    ap.add_argument("--include-graphs", action="store_true", help="also add the built *_SciAfford graphs")
     ap.add_argument("--full-train-export", action="store_true",
                     help="also add the large eval.json / eval_primary.json of the SIR-4 train exports")
     a = ap.parse_args()
@@ -91,13 +92,13 @@ def main() -> int:
         for split in ("train", "test"):
             raw = os.path.join(sp.corpus_dir(split), "raw")
             wanted += [rel(os.path.join(raw, "documents.json")), rel(os.path.join(raw, f"{split}.json"))]
-            wanted += [rel(sp.frames_path("doc", split)), rel(sp.frames_path("query", split)), rel(sp.probes_path(split))]
+            wanted += [rel(sp.affordances_path("doc", split)), rel(sp.affordances_path("query", split)), rel(sp.answers_path(split))]
             if a.include_graphs:
                 s1 = os.path.join(sp.graph_dir(split), "processed", "stage1")
                 wanted += [rel(os.path.join(s1, f)) for f in ("nodes.csv", "edges.csv", "relations.csv", f"{split}.json")]
         if ds in SIR4_EXPORTS:
             train_x, test_x = SIR4_EXPORTS[ds]
-            bench = "benchmark/data/benchmark"
+            bench = "sir-4/data/benchmark"
             wanted += [f"{bench}/{test_x}/{f}" for f in ("sets.json", "manifest.json", "eval.json", "eval_primary.json")]
             wanted += [f"{bench}/{train_x}/{f}" for f in ("sets.json", "manifest.json")]
             if a.full_train_export:

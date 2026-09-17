@@ -61,14 +61,14 @@ def main():
     ap.add_argument("--root", default=None, help="directory whose subdirectories are datasets")
     ap.add_argument("--dir", action="append", default=[], help="name=path, repeatable")
     ap.add_argument("--prefix", default="hops_"); ap.add_argument("--out", default=None)
-    ap.add_argument("--quartet", action="append", default=[], help="name=eval.json: per-GOLD stratum from QUARTET (SIR-4); otherwise the query stratum in the hops file is used")
+    ap.add_argument("--sir4", "--quartet", dest='sir4', action="append", default=[], help="name=eval.json: per-GOLD stratum from SIR-4; otherwise the query stratum in the hops file is used")
     a = ap.parse_args()
     dirs = [(os.path.basename(p.rstrip("/")), p) for p in sorted(glob.glob(f"{a.root}/*/")) ] if a.root else []
     dirs += [tuple(x.split("=", 1)) for x in a.dir]
     assert dirs, "give --root or --dir"
     res = {}; md = []
     qz = {}
-    for x in a.quartet:
+    for x in a.sir4:
         nm, path = x.split("=", 1); m = {}
         for row in json.load(open(path)):
             for doc, meta in (row.get("quartet", {}).get("per_document") or {}).items(): m[(row["id"], doc)] = meta.get("stratum")
@@ -80,7 +80,7 @@ def main():
             new, base = load(fnew), load(fbase); keys = [k for k in new if k in base]
             if name in qz:   # per-gold stratum (a query can have cross- and same-field golds)
                 new = {k: (qz[name].get(k) or "unlabelled", v[1]) for k, v in new.items()}
-            unit = "stratum of the gold (QUARTET)" if name in qz else "stratum of the query (hops file)"
+            unit = "stratum of the gold (SIR-4)" if name in qz else "stratum of the query (hops file)"
             strata = sorted({new[k][0] for k in keys})
             groups = [("all", keys)] + [(s, [k for k in keys if new[k][0] == s]) for s in strata if s != "unlabelled"]
             tag = f"{name} · {arm} · " + ("gate on vs off, same weights" if kind == "gate" else "CCMP-trained vs control")

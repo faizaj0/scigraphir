@@ -3,15 +3,15 @@
 The labels already exist: domains/source_domains.jsonl + domains/inspiration_domains.jsonl
 both contain train rows (107,059 source papers / 195,301 inspiration steps, already resolved).
 This script just JOINS source-domain + gold-domain per (source_id, step_idx) and applies
-Definition A via cargo.data.stratum_cross, i.e. it is identical to how test queries.json was
+Definition A via retriever.tomato_star.data.stratum_cross, i.e. it is identical to how test queries.json was
 labelled. NO OpenAlex / OpenAI / API calls are made -- it is a pure local join.
 
 Run:
-  python -m cargo.train_strata                      # full train distribution
-  python -m cargo.train_strata --split test         # sanity-check: should reproduce ~289 cross / 2843 same
-  python -m cargo.train_strata --sample 7000        # what a random 7k-PAPER graph would contain (seed 42)
-  python -m cargo.train_strata --write              # also dump per-query frame -> caches/train_strata.jsonl
-                                                    # (use this frame to oversample cross into a small graph)
+  python -m retriever.tomato_star.train_strata                      # full train distribution
+  python -m retriever.tomato_star.train_strata --split test         # sanity-check: should reproduce ~289 cross / 2843 same
+  python -m retriever.tomato_star.train_strata --sample 7000        # what a random 7k-PAPER graph would contain (seed 42)
+  python -m retriever.tomato_star.train_strata --write              # also dump per-problem requirement representations -> caches/train_strata.jsonl
+                                                    # (use this affordance representation to oversample cross into a small graph)
 """
 from __future__ import annotations
 import argparse, json, random
@@ -23,7 +23,7 @@ from .data import stratum_cross, stratum_A, stratum_gold, _load_overrides
 
 
 def _gold_key(row: dict) -> str | None:
-    """found_doi (lowercased) else found_title (lowercased) -- identical to cargo.data._norm_key."""
+    """found_doi (lowercased) else found_title (lowercased) -- identical to retriever.tomato_star.data._norm_key."""
     doi = (row.get("found_doi") or "").strip().lower()
     if doi:
         return doi
@@ -57,7 +57,7 @@ def main():
 
     src_dom = load_source_domains(args.split)
 
-    # gold-domain overrides: test's file + this split's LLM-resolved file (from cargo.resolve_train)
+    # gold-domain overrides: test's file + this split's LLM-resolved file (from retriever.tomato_star.resolve_train)
     overrides = _load_overrides()  # caches/gold_domain_overrides.json (test golds; keyed by gold_key)
     tgo = CACHE / f"{args.split}_gold_domain_overrides.json"
     if tgo.exists():

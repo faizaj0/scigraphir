@@ -5,7 +5,7 @@ walk_prior_why.py -- why the untrained walk prefers one graph over the other, pe
 For every dataset, graph and stratum: how many seed nodes a query has and how specific they are
 (degree), how far the golds sit from the seed set (BFS distance 1 / 2 / 3 / further), how large the
 2-hop neighbourhood is (the flood the gold competes with), and the walk's nDCG@5 conditioned on the
-gold's distance. Then qualitative pairs: queries where the frame-graph walk ranks the gold in the top 5
+gold's distance. Then qualitative pairs: queries where the SciAfford graph walk ranks the gold in the top 5
 and the OpenIE walk buries it, and the reverse, each with the shortest seed->gold route on both graphs
 and the degree of every node on it.
 
@@ -115,7 +115,7 @@ def main() -> int:
     qual = {}
     for ds in a.datasets.split(","):
         per_graph = {}
-        for g, label in ((f"{ds}_test_v16sc", "SciAffordGraph"), (f"{ds}_test", "OpenIE")):
+        for g, label in ((f"{ds}_test_v16sc", "SciAfford graph"), (f"{ds}_test", "OpenIE")):
             stage1 = f"{a.data}/{g}/processed/stage1"
             if not os.path.exists(f"{stage1}/test.json"): continue
             idx, A, docs, names = load_graph(stage1)
@@ -155,18 +155,18 @@ def main() -> int:
         if len(per_graph) == 2:
             qual[ds] = per_graph
     out()
-    out("seeds = the query's start nodes in that graph (frames extracted from the query on SciAffordGraph, entities linked from the "
+    out("seeds = the query's start nodes in that graph (affordance representations extracted from the query on SciAfford graph, entities linked from the "
         "query text on OpenIE). degree = undirected degree in the stage-1 graph; a hub seed spreads its mass over hundreds of "
         "neighbours. gold at d=k = share of golds whose shortest route from ANY seed is k hops (BFS, undirected). docs within 2 hops "
         "= the papers a 2-step walk can reach at all, i.e. the field the gold competes in. The last three columns are the walk's "
         "nDCG@5 on queries whose nearest gold is at that distance.\n")
 
-    # seed-type breakdown on the frame graph: which frame types carry the distance-1 links
-    out("## Which seed types touch a gold directly (SciAffordGraph, distance-1 links)\n")
+    # seed-type breakdown on the SciAfford graph: which affordance representation types carry the distance-1 links
+    out("## Which seed types touch a gold directly (SciAfford graph, distance-1 links)\n")
     out("| dataset | stratum | seed types per query (mean) | share of d=1 golds reached via task / function / limitation / method / entity / other |")
     out("|---|---|---|---|")
     for ds, pg in qual.items():
-        rows, idx, names, deg, doc_set, stage1 = pg["SciAffordGraph"]
+        rows, idx, names, deg, doc_set, stage1 = pg["SciAfford graph"]
         Ab_adj = None
         _, A_, _, _ = load_graph(stage1); Ab = (A_ > 0).tocsr()
         for s in (["all", "same", "cross"] if any(r["stratum"] == "cross" for r in rows) else ["all"]):
@@ -188,7 +188,7 @@ def main() -> int:
     # qualitative pairs
     out("## Qualitative: where one graph's walk finds the gold and the other buries it\n")
     for ds, pg in qual.items():
-        fr, fidx, fnames, fdeg, fdocs, fs1 = pg["SciAffordGraph"]; op, oidx, onames, odeg, odocs, os1 = pg["OpenIE"]
+        fr, fidx, fnames, fdeg, fdocs, fs1 = pg["SciAfford graph"]; op, oidx, onames, odeg, odocs, os1 = pg["OpenIE"]
         docs_txt = json.load(open(f"{a.data}/{ds}_test/raw/documents.json"))
         frel, orel = load_edges(fs1, fidx), load_edges(os1, oidx)
         fadj, oadj = defaultdict(list), defaultdict(list)
@@ -216,18 +216,18 @@ def main() -> int:
             for qid, fbest, obest, strat in sel[: a.n_examples]:
                 f, o = fb[qid], ob[qid]
                 gold = min(f["ranks"], key=f["ranks"].get); gold_name = fnames[gold]
-                out(f"**{qid}** ({strat}-field) | walk rank of the gold: SciAffordGraph {f['ranks'][gold]}, OpenIE {o['ranks'].get(oidx.get(gold_name), '--') if oidx.get(gold_name) is not None else '--'}")
+                out(f"**{qid}** ({strat}-field) | walk rank of the gold: SciAfford graph {f['ranks'][gold]}, OpenIE {o['ranks'].get(oidx.get(gold_name), '--') if oidx.get(gold_name) is not None else '--'}")
                 out(f"- query: {f['question'][:300]}")
                 out(f"- gold: {docs_txt.get(gold_name, gold_name)[:220]}")
-                out(f"- SciAffordGraph seeds: {len(f['seeds'])} (degrees median {np.median(f['seed_deg']):.0f}); route: {route(fadj, fnames, fdeg, frel, fidx, f['seeds'], gold_name, fdocs)}")
+                out(f"- SciAfford graph seeds: {len(f['seeds'])} (degrees median {np.median(f['seed_deg']):.0f}); route: {route(fadj, fnames, fdeg, frel, fidx, f['seeds'], gold_name, fdocs)}")
                 out(f"- OpenIE seeds: {len(o['seeds'])} (degrees median {np.median(o['seed_deg']) if o['seed_deg'] else 0:.0f}); route: {route(oadj, onames, odeg, orel, oidx, o['seeds'], gold_name, odocs)}")
                 out()
         fw = sorted([p for p in pairs if p[1] <= 5 and p[2] > 50], key=lambda p: (-p[2], p[1]))
         ow = sorted([p for p in pairs if p[2] <= 5 and p[1] > 50], key=lambda p: (-p[1], p[2]))
-        out(f"### {ds}: counts\n\nframe top-5 while OpenIE past 50: {len(fw)} queries; OpenIE top-5 while frame past 50: {len(ow)} queries "
+        out(f"### {ds}: counts\n\nframe top-5 while OpenIE past 50: {len(fw)} queries; OpenIE top-5 while affordance representation past 50: {len(ow)} queries "
             f"(cross-field: {sum(p[3] == 'cross' for p in fw)} vs {sum(p[3] == 'cross' for p in ow)})\n")
-        show("frame graph finds it, OpenIE buries it", fw, "frame", "openie", 1, 2)
-        show("OpenIE finds it, frame graph buries it", ow, "openie", "frame", 2, 1)
+        show('SciAfford graph finds it, OpenIE buries it', fw, "frame", "openie", 1, 2)
+        show('OpenIE finds it, SciAfford graph buries it', ow, "openie", "frame", 2, 1)
     text = "\n".join(L)
     if a.md: open(a.md, "w").write(text + "\n"); print("wrote", a.md, file=sys.stderr)
     return 0

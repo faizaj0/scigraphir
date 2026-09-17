@@ -1,57 +1,29 @@
 """
-semantic_scorer.py -- controlled comparison of semantic scorer architectures on
-SIR-4. No graph, no reasoner, no fusion.
+Multi-view semantic scoring with PMI-style specificity correction.
 
-    arm "current"  s = w0 z(r_dir) + w1 z(S/p^beta) + w2 z(M/p^beta)
-                   S = sum_j H_qdj, M = max_j H_qdj      (the handcrafted summaries)
+The thesis model is the `mlp` arm: MatchabilityPredictor is the document MLP
+(g_eta), which estimates background matchability from the document embedding.
+SortedMLPScorer is the ranking MLP (f_phi), which reads the sorted, corrected
+hypothetical-answer similarities together with the direct query similarity.
+The text encoder is frozen.
 
-    arm "attention"  s = sum_v a_v x_v,  a = softmax_v(MLP([x_v, t_v]))
-                     over the direct view and every valid hypothetical answer, so
-                     the weights sum to 1. The pooled score is a weighted average,
-                     which keeps it on the same scale as the direct view no matter
-                     how many hypothetical answers a query has.
+The other arms are controlled comparisons: `dense` uses the direct similarity;
+`current` is the earlier handcrafted sum/max scorer; attention, gated, DeepSets
+and set-MLP variants use alternative ways of combining the answer similarities.
+The `mlp_bank` and `mlp_loo` arms vary the source of background matchability.
 
-    arm "gated"      s = g_dir x_dir + sum_j g_qdj x_qdj,  g = sigmoid(MLP([x, t]))
-                     Independent gates that do not sum to 1, so several strong
-                     views accumulate. Kept selectable via --arms; note the summed
-                     views carry several times the spread of the direct view, so
-                     this arm has to learn the channel balance the other two get
-                     from normalisation.
+`--loss fixed` is the default multi-gold objective. `--loss handcrafted` retains the
+earlier objective for reproduction. Comparisons share the selected objective,
+fit/dev split and development criterion.
 
-    arm "dualsetmlp" h_j   = [x_j, MLP(x_j)]
-                       u_all = sum_j h_j
-                       u_sel = sum_j softmax_j(tau x_j) h_j
-                       s     = linear([x_dir,u_all,u_sel]) + MLP([x_dir,u_all,u_sel])
+The learned arm uses its own predicted matchability by default. Other arms use
+`--matchability loo|bank|predicted`: leave-one-out estimates need other queries
+in the split; the training-answer bank and document predictor support unseen
+corpora. `--popularity` remains an alias for existing commands and saved metadata.
 
-                     This is the automatic raw-view scorer: additive pooling
-                     preserves evidence accumulation, a learned positive
-                     temperature provides monotonic selective pooling, and the
-                     final residual MLP is not constrained to a weighted average.
-
-All trained arms use the SAME selected loss, frozen encoder outputs, fit/dev
-split, and development metric. In a comparison run, the only intended change is
-the scorer architecture.
-
-THE OBJECTIVE. `--loss operator` (DEFAULT) is operator_scorer.py's exactly, so the
-`current` arm reproduces the scorer as it is fitted everywhere else in the project
-and the only thing varying between arms is the architecture.
-
-`--loss fixed` is the multi-gold correction. The operator objective's denominator
-runs over the whole corpus INCLUDING the query's other golds; TOMATO has one gold
-per query so that is harmless there, but SIR-4 matsci has 3.95, so every step
-pushes gold 1 up by pushing golds 2..4 down. Both are available and every output
-filename carries which one produced it, so the two can be compared rather than
-argued about.
-
-WHY THE HYPOTHETICAL VIEWS SHARE ONE SCALE. Standardising each view separately
-sets every view's spread to exactly 1, which is precisely the quantity that says
-whether a hypothetical answer discriminates between papers at all. A view that
-gives every paper the same score would arrive at the gate looking as confident as
-one that separates them. So the views are CENTRED individually and divided by a
-single shared scale, which preserves their relative spreads.
-
-Run (after the operator cell has produced the embedding caches):
-    python3 eval/semantic_scorer.py --dataset sir4_matsci --model /content/qwen3
+Cached inputs and checkpoint keys keep their established names. Run from the
+repository root after generating hypothetical answers:
+    python experiments/eval/semantic_scorer.py --dataset sir4_matsci --model /path/to/qwen3
 """
 from __future__ import annotations
 
@@ -75,14 +47,14 @@ import torch.nn as _nn
 _ROOT = os.environ.get("SCIGRAPHIR_ROOT") or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, _ROOT)
 from scigraphir_paths import (add_dataset_arg, banner, corpus_dir, emb_dir,  # noqa: E402
-                         probes_path, set_dataset)
+                         answers_path, set_dataset)
 
-EPS = 1e-6            # popularity floor and normalisation floor, as specified
+EPS = 1e-6            # background matchability floor and normalisation floor, as specified
 KS_REPORT = (1, 3, 5, 10, 25, 100)
 
 
 def _op_module():
-    """Load operator_scorer as a module so the embedding cache keys are IDENTICAL.
+    """Load handcrafted_scorer as a module so the embedding cache keys are IDENTICAL.
 
     The encoder, the query instruction, the instruction fingerprint and the
     filename layout all live there. Re-implementing any of them here would
@@ -90,8 +62,8 @@ def _op_module():
     different instruction -- which is the same silent-wrong-baseline failure the
     rest of this pipeline is armoured against.
     """
-    p = f"{_ROOT}/retriever/eval/operator_scorer.py"
-    spec = importlib.util.spec_from_file_location("operator_scorer", p)
+    p = f"{_ROOT}/retriever/eval/handcrafted_scorer.py"
+    spec = importlib.util.spec_from_file_location('handcrafted_scorer', p)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
@@ -107,7 +79,7 @@ def build_inputs(op, model_name, split, cache_root, force=False):
     is 5,445 x 8 x 20,203 = 1.8 GB, which is fine on disk and fine to slice a
     minibatch out of, and not fine to hold on a GPU alongside activations.
     """
-    doc_ids, corpus, queries, probes = op.load_split(split)
+    doc_ids, corpus, queries, answers = op.load_split(split)
     D, Q = len(doc_ids), len(queries)
     qids = [q["id"] for q in queries]
     qkey = hashlib.md5("|".join(qids).encode()).hexdigest()[:8]
@@ -148,7 +120,7 @@ def build_inputs(op, model_name, split, cache_root, force=False):
     ppath = f"{emb_dir()}/{split}_probe_{qkey}{slug}.npy"
     flat, own = [], []
     for i, q in enumerate(queries):
-        for pr in probes.get(q["id"], []):
+        for pr in answers.get(q["id"], []):
             flat.append(pr)
             own.append(i)
     if not all(os.path.exists(p) for p in (dpath, qpath, ppath)):
@@ -172,7 +144,7 @@ def build_inputs(op, model_name, split, cache_root, force=False):
     meta["Jmax"] = Jmax
     print(f"[sem] {split}: Q={Q} D={D} Jmax={Jmax} "
           f"(views/query min {counts.min()} mean {counts.mean():.1f})")
-    assert counts.min() > 0, "a query has no hypothetical answers; regenerate probes"
+    assert counts.min() > 0, "a query has no hypothetical answers; regenerate hypothetical answers"
 
     # dense in row chunks -- one Q x D float32 is 440 MB at CS scale
     dense = np.empty((Q, D), np.float16)
@@ -188,7 +160,7 @@ def build_inputs(op, model_name, split, cache_root, force=False):
         h = np.clip(pe[idx] @ de.T, 0, None).astype(np.float32)      # [j_i, D]
         H[i, :len(idx)] = h.astype(np.float16)
         mask[i, :len(idx)] = True
-        total_S += h.sum(0)                       # popularity over the WHOLE split
+        total_S += h.sum(0)                       # background matchability over the WHOLE split
         if i % 500 == 0:
             print(f"  [sem] {split} {i}/{Q}  ({time.time() - t0:.0f}s)", flush=True)
     H.flush()
@@ -222,10 +194,10 @@ def gold_matrix(queries, doc_ids):
 # stage 2: the two architectures
 # --------------------------------------------------------------------------
 class Pop:
-    """Per-document popularity for the anti-hub division, in one of three modes.
+    """Per-document background matchability for the background matchability division, in one of three modes.
 
     loo        (total_S - S) per query: the historical estimate. TRANSDUCTIVE --
-               a test paper's popularity is computed from the OTHER test queries'
+               a test paper's background matchability is computed from the OTHER test queries'
                hypothetical answers, so it cannot run on one query alone.
     bank       mean ReLU cosine against the TRAIN-split answer bank. Query-
                independent: one [D] vector per corpus, computable for unseen
@@ -282,9 +254,9 @@ class Pop:
 
     @staticmethod
     def from_data(data, device, variant=""):
-        """`variant` selects an alternative popularity stored on the same split.
+        """`variant` selects an alternative background matchability stored on the same split.
 
-        The mlp arm carries its own LEARNED popularity as part of the proposal, so
+        The mlp arm carries its own LEARNED background matchability as part of the proposal, so
         one run needs two sources live at once: the baseline's leave-one-out and
         the predictor's. They are stored side by side rather than in two runs.
         """
@@ -295,7 +267,7 @@ class Pop:
         return Pop(data[mk], vec=_torch.as_tensor(data[vk], device=device).float())
 
     def per_query(self, S):
-        """[B, D] popularity, given the query's own answer-sum S [B, D]."""
+        """[B, D] background matchability, given the query's own answer-sum S [B, D]."""
         if self.mode == "loo":
             return (self.total_S.unsqueeze(0) - S).clamp_min(EPS)
         if self.mode == "joint":
@@ -308,7 +280,7 @@ class Pop:
 
 
 def _views(H, mask, dense, pop, beta):
-    """Popularity adjustment + the two normalisations. Returns x_dir, x_hyp, Ht.
+    """background matchability adjustment + the two normalisations. Returns x_dir, x_hyp, Ht.
 
     H     [B, J, D] float32   raw ReLU'd hypothetical-answer matches
     mask  [B, J]    float32   1 for a real answer, 0 for padding
@@ -359,14 +331,14 @@ def _set_views(H, mask, dense, pop, beta):
 
 
 class MatchabilityPredictor(_nn.Module):
-    """Query-Independent Document Matchability Estimator.
+    """Document MLP g_eta: predict background matchability for specificity correction.
 
         p_hat(d) = softplus( g_eta(E(d)) ),   g_eta: dim -> hidden -> 1
 
     Distils the train-answer bank into a function of the paper embedding alone,
-    so popularity at inference needs nothing but the paper itself: no other test
+    so background matchability at inference needs nothing but the paper itself: no other test
     queries, no bank matmul, no lookup table. Fitted on log targets so a few
-    extremely popular papers cannot dominate the loss.
+    highly matchable papers cannot dominate the loss.
     """
 
     def __init__(self, dim, hidden=64):
@@ -473,7 +445,7 @@ class CurrentScorer:
 class DenseScorer:
     """The dense baseline: rank by the query-document cosine alone.
 
-    No hypothetical answers, no popularity term, no parameters, no training. It is
+    No hypothetical answers, no background matchability term, no parameters, no training. It is
     here so the table shows what the hypothetical-answer machinery buys over plain
     query-document similarity in the SAME encoder space -- without it, a reader
     cannot tell whether `current` and `attention` are close to each other because
@@ -578,7 +550,7 @@ class SetMLPScorer(_nn.Module):
     The first per-view channel is an identity path.  It gives gradients a stable
     route and makes the initial model a strong direct-plus-pooled retriever.  All
     output weights, the nonlinear set features, and beta remain trainable.  No
-    maximum, top-k statistic, rank position, or manually weighted operator input
+    maximum, top-k statistic, rank position, or manually weighted handcrafted scorer input
     is computed.
     """
 
@@ -787,36 +759,17 @@ class AttentionScorer:
 
 
 class SortedMLPScorer:
-    """One MLP on the SORTED vector of view scores. No sum, no max, no attention.
+    """Ranking MLP f_phi over the corrected, sorted similarity profile.
 
-        input  = [ x_dir , sort_desc(x_hyp_1..J) padded to jmax , n_valid/jmax ]
-        s      = MLP(input)
+    Input: direct query similarity, descending hypothetical-answer similarities
+    padded to jmax, and n_valid/jmax. The matchability object supplies the
+    specificity correction before scoring. Each view is centred; a shared scale
+    preserves differences in spread between the hypothetical answers.
 
-    NOTHING IS HANDCRAFTED. Sorting is not a summary statistic, it is a
-    canonical ordering: it makes the input permutation invariant by construction
-    while throwing away nothing. The MLP then learns whatever function of the
-    score distribution it wants -- how much the best answer counts, whether the
-    second one matters, whether the gap between them matters, how many answers
-    need to fire. `sum` and `max` are not computed anywhere.
-
-    IT GENERALISES SUMMARY-BASED SCORING, WHICH IS NOT THE SAME AS CONTAINING IT.
-    `current` is w0 x_dir + w1 (sum_j x_hyp) + w2 (max_j x_hyp), and on this input
-    the sum is the sum of the sorted coordinates, the max is the first sorted
-    coordinate, and x_dir is coordinate 0 -- so a linear readout gets close. But
-    `_views` centres each hypothetical answer SEPARATELY before the shared scale,
-    so the max channel here is the largest CENTRED value, which is not the same
-    quantity `current` computes from raw matches. The honest claim is that this
-    arm exposes the complete ordered match profile instead of two fixed summaries
-    of it, not that it reproduces the baseline exactly.
-
-    NO SPREAD PROBLEM. Every coordinate gets its own free weight, so the model can
-    set any balance between the direct match and the answers. Both previous arms
-    failed on exactly this: gated summed the answers and they overwhelmed x_dir,
-    attention averaged them and x_dir overwhelmed them.
-
-    Padded slots sort to the end and are zeroed, and the valid count is supplied as
-    a feature, so a query with three answers and one with eight are distinguishable
-    without the padding masquerading as evidence.
+    Sorting makes the profile invariant to answer order. Padded slots sort to
+    the end and are zeroed; the valid count distinguishes padding from evidence.
+    The `current` comparison instead uses fixed sum and max summaries of raw
+    matches, so the two scorers do not use identical summary features.
     """
 
     name = "mlp"
@@ -918,14 +871,14 @@ class GatedScorer:
 # --------------------------------------------------------------------------
 # stage 3: the corrected multi-gold loss, and dev nDCG@10
 # --------------------------------------------------------------------------
-def operator_loss(scores, gold_idx, gold_val):
-    """operator_scorer.py's objective, reproduced exactly.
+def handcrafted_loss(scores, gold_idx, gold_val):
+    """handcrafted_scorer.py's objective, reproduced exactly.
 
         -torch.log_softmax(S_op, 1)[qi, gi].mean()
 
     i.e. the mean over all (query, gold) PAIRS of -log_softmax(s)[gold], with the
     denominator running over the whole corpus. THIS IS THE DEFAULT, so the
-    `current` arm here reproduces the operator as it is actually fitted everywhere
+    `current` arm here reproduces the handcrafted scorer as it is actually fitted everywhere
     else in the project and the comparison changes only the architecture.
 
     It differs from `multigold_loss` in two ways at once, which is worth knowing
@@ -1032,7 +985,7 @@ def train_fixed(model, tr, fit_rows, gold_idx, gold_val, device, a, torch,
     the point: every train query is in this fit.
     """
     pop = Pop.from_data(tr, device) if pop is None else pop
-    # Under joint training the popularity predictor is part of the optimised
+    # Under joint training the background matchability predictor is part of the optimised
     # model, so its matrices belong in the decayed group like any other.
     trainable = list(model.parameters()) + pop.parameters()
     groups = [g for g in (
@@ -1044,7 +997,7 @@ def train_fixed(model, tr, fit_rows, gold_idx, gold_val, device, a, torch,
     gi = torch.as_tensor(gold_idx, device=device)
     gv = torch.as_tensor(gold_val, device=device)
     rng = np.random.default_rng(a.seed if seed is None else seed)
-    lossfn = operator_loss if a.loss == "operator" else multigold_loss
+    lossfn = handcrafted_loss if a.loss == 'handcrafted' else multigold_loss
     hist = []
     for ep in range(n_epochs):
         if hasattr(model, "train"):
@@ -1141,7 +1094,7 @@ def train_arm(model, tr, fit_rows, dev_rows, gold_idx, gold_val, gold_lists,
     # purpose is to discourage sharp MLP functions, and this is the scoping that
     # actually does that and nothing else.
     pop = Pop.from_data(tr, device) if pop is None else pop
-    # Under joint training the popularity predictor is part of the optimised
+    # Under joint training the background matchability predictor is part of the optimised
     # model, so its matrices belong in the decayed group like any other.
     trainable = list(model.parameters()) + pop.parameters()
     groups = [g for g in (
@@ -1153,7 +1106,7 @@ def train_arm(model, tr, fit_rows, dev_rows, gold_idx, gold_val, gold_lists,
     gi = torch.as_tensor(gold_idx, device=device)
     gv = torch.as_tensor(gold_val, device=device)
     rng = np.random.default_rng(a.seed if seed is None else seed)
-    lossfn = operator_loss if a.loss == "operator" else multigold_loss
+    lossfn = handcrafted_loss if a.loss == 'handcrafted' else multigold_loss
     on_loss = a.select_on == "loss"
     sel_k = 100 if a.select_on == "ndcg100" else 10
     # Lower is better for loss, higher for nDCG, so track the score to BEAT in the
@@ -1204,7 +1157,7 @@ def train_arm(model, tr, fit_rows, dev_rows, gold_idx, gold_val, gold_lists,
             break
     model.load(best_state)
     # pop_tr and pop_te SHARE one predictor object, so restoring it here also
-    # restores the popularity the test split will be scored with.
+    # restores the background matchability the test split will be scored with.
     pop.load_state(best_pop)
     # Return the nDCG AT THE SELECTED CHECKPOINT, not the best nDCG seen. Those
     # differ under loss selection, and reporting the max would reintroduce exactly
@@ -1212,12 +1165,12 @@ def train_arm(model, tr, fit_rows, dev_rows, gold_idx, gold_val, gold_lists,
     return best_nd, best_state, hist, best_sel, best_pop
 
 
-def distill_operator(model, teacher, tr, fit_rows, device, a, torch, seed=None):
-    """Initialise a raw-view neural scorer from the fitted operator ranking.
+def distill_handcrafted(model, teacher, tr, fit_rows, device, a, torch, seed=None):
+    """Initialise a raw-view neural scorer from the fitted handcrafted scorer ranking.
 
     This is representation distillation, not an inference-time ensemble: the
     teacher is used only on source-training queries.  The student never receives
-    the operator's sum or maximum as input and the teacher is absent at test.
+    the handcrafted scorer's sum or maximum as input and the teacher is absent at test.
     """
     groups = [g for g in (
         {"params": [p for p in model.parameters() if p.ndim >= 2],
@@ -1272,13 +1225,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="BAAI/bge-large-en-v1.5")
     # 0 = every train query left after the dev slice. The old default of 2,500
-    # came from operator_scorer.py, where it fitted FOUR parameters and more data
+    # came from handcrafted_scorer.py, where it fitted FOUR parameters and more data
     # bought nothing. The learned arms here have 34-200 parameters and their
     # measured failure mode is overfitting, so capping the fit set is backwards:
     # it discarded 2,645 CS queries and 6,869 TOMATO queries for no reason.
     ap.add_argument("--train_fit", type=int, default=0,
                     help="fit queries after the dev slice; 0 = all remaining")
-    # 300, not operator_scorer.py's 600. Dev is sliced FIRST, so on a small domain
+    # 300, not handcrafted_scorer.py's 600. Dev is sliced FIRST, so on a small domain
     # it decides how much fit data is left: matsci has 1,304 train queries, where
     # 600 leaves 704 and 300 leaves 1,004. 300 still gives a stable nDCG@10.
     ap.add_argument("--dev", type=int, default=300)
@@ -1307,7 +1260,7 @@ def main():
                     help="identity-preserving set-MLP width")
     ap.add_argument("--set_dropout", type=float, default=0.0,
                     help="whole-answer dropout in the setmlp arm, training only")
-    ap.add_argument("--distill_operator", default=None,
+    ap.add_argument('--distill_handcrafted', '--distill_operator', dest='distill_handcrafted', default=None,
                     help="fitted current-scorer JSON used only to initialise a set MLP")
     ap.add_argument("--distill_epochs", type=int, default=0)
     ap.add_argument("--distill_lr", type=float, default=1e-3)
@@ -1316,25 +1269,21 @@ def main():
                          "per seed and keeps the best dev checkpoint. The fit/dev "
                          "SPLIT stays fixed by --seed, so seeds vary only init, "
                          "batch order and dropout.")
-    # DEFAULT IS THE OPERATOR'S OWN OBJECTIVE, so the `current` arm reproduces the
-    # scorer as it is fitted elsewhere in the project and the only thing varying
-    # between arms is the architecture. `fixed` is the multi-gold correction:
-    # SIR-4 averages ~4 golds per query and the operator objective keeps them in
-    # each other's denominator, so it pushes a query's own labels apart. Run both
-    # to measure that rather than assume it.
-    ap.add_argument("--loss", default="fixed", choices=["operator", "fixed"])
-    # DEPLOYABILITY OF THE POPULARITY TERM. `loo` needs the OTHER test queries'
+    # The default multi-gold objective excludes the query's other golds from
+    # its negative denominator. `handcrafted` retains the earlier comparison loss.
+    ap.add_argument("--loss", default="fixed", type=lambda v: {"operator": "handcrafted"}.get(v, v), choices=['handcrafted', "fixed"])
+    # DEPLOYABILITY OF THE background matchability TERM. `loo` needs the OTHER test queries'
     # hypothetical answers, so it cannot score one query alone. `bank` replaces it
     # with the train-answer bank (query-independent, one matmul per corpus at
     # indexing time). `predicted` distils that bank into an MLP of the paper
     # embedding, so inference is fully local. Default stays loo so every prior
     # number reproduces.
-    ap.add_argument("--popularity", default="loo", choices=["loo", "bank", "predicted"])
-    # The mlp arm's popularity is PART OF THE ARM, not a run-level axis: the whole
+    ap.add_argument("--matchability", "--popularity", dest='popularity', default="loo", choices=["loo", "bank", "predicted"])
+    # The mlp arm's background matchability is PART OF THE ARM, not a run-level axis: the whole
     # proposal is a scorer that needs nothing but the paper embedding at inference.
-    # Set 0 to make it share --popularity with the other arms instead.
-    ap.add_argument("--mlp_popularity", type=int, default=1,
-                    help="1 = the mlp arm uses its own learned popularity predictor")
+    # Set 0 to make it share --matchability with the other arms instead.
+    ap.add_argument("--mlp-matchability", "--mlp_popularity", dest='mlp_popularity', type=int, default=1,
+                    help="1 = the mlp arm uses its own learned background matchability predictor")
     # TWO-STAGE vs JOINT. Two-stage fits the predictor to the bank targets, freezes
     # it, then trains the scorer -- so a win is attributable to the scorer and the
     # predictor keeps meaning "general matchability". Joint lets the retrieval
@@ -1342,7 +1291,7 @@ def main():
     # log-MSE target; more expressive, less interpretable, and the predictor can
     # drift into being extra scorer capacity if lambda is too small.
     ap.add_argument("--mlp_pop_joint", type=int, default=0,
-                    help="1 = train the popularity predictor jointly with the scorer")
+                    help="1 = train the background matchability predictor jointly with the scorer")
     ap.add_argument("--pop_lambda", type=float, default=1.0,
                     help="weight on the matchability anchor under joint training")
     # Checkpoint/early-stopping criterion. `loss` is the default because dev
@@ -1354,7 +1303,7 @@ def main():
     # seed 2, ep18 -> ep29: loss 5.8507 -> 5.6360 while nDCG 0.4329 -> 0.3976).
     # The loss is InfoNCE over the whole corpus, so it is rewarded for separating
     # the gold from negatives at rank 2000 that no metric sees; beta collapses
-    # (0.89 -> 0.37), switching off the popularity discount that suppresses
+    # (0.89 -> 0.37), switching off the background matchability discount that suppresses
     # generically attractive papers at the TOP. Global separation improves, head
     # precision degrades. nDCG@10 is a chunky step function, which is the real
     # problem, but the cure is a SMOOTHER VERSION OF THE METRIC:
@@ -1409,8 +1358,8 @@ def main():
     te = build_inputs(op, a.model, "test", cache, a.force_build)
 
     arms_req = [x.strip() for x in a.arms.split(",") if x.strip()]
-    # THE MLP ARM CARRIES ITS OWN LEARNED POPULARITY. It is not a separate axis:
-    # the proposal is one deployable scorer -- learned pooling AND a popularity
+    # THE MLP ARM CARRIES ITS OWN LEARNED BACKGROUND MATCHABILITY. It is not a separate axis:
+    # the proposal is one deployable scorer -- learned pooling AND a background matchability
     # discount predicted from the paper embedding alone, with no dependence on the
     # other test queries. `current` keeps the leave-one-out term it has always
     # used, so the comparison is proposal-vs-baseline as each is actually meant to
@@ -1420,7 +1369,7 @@ def main():
         # TRAIN targets are already on disk: total_S is the sum over every train
         # answer, so dividing by the answer count IS the bank mean for the train
         # corpus. Only the TEST corpus needs a fresh matmul, against the SAME
-        # train bank -- no test query ever contributes to any popularity value.
+        # train bank -- no test query ever contributes to any background matchability value.
         slug = op.model_slug(a.model)
         n_bank = int(tr["mask"].sum())
         p_tr = (tr["total_S"] / max(n_bank, 1)).astype(np.float32)
@@ -1436,7 +1385,7 @@ def main():
               f"[{p_tr.min():.4f}, {p_tr.max():.4f}], test p in "
               f"[{p_te.min():.4f}, {p_te.max():.4f}]")
         # KEEP THE BANK VECTORS. They are the anchor targets AND the `mlpbank`
-        # arm's popularity, so overwriting them with predictions below would lose
+        # arm's background matchability, so overwriting them with predictions below would lose
         # the one configuration measured to beat the baseline.
         bank_te = p_te.copy()
         tr["pop_mode_bank"] = te["pop_mode_bank"] = "bank"
@@ -1450,7 +1399,7 @@ def main():
             gm, fit_info = fit_matchability(de_tr, p_tr, device, seed=a.seed)
             pop_info["fit"] = fit_info
             with _torch.no_grad():
-                # The scorer sees PREDICTED popularity on BOTH splits, so its
+                # The scorer sees PREDICTED background matchability on BOTH splits, so its
                 # training-time input distribution matches inference exactly.
                 p_tr = gm(_torch.as_tensor(de_tr, device=device)).cpu().numpy()
                 p_te = gm(_torch.as_tensor(de_te, device=device)).cpu().numpy()
@@ -1476,7 +1425,7 @@ def main():
     gidx, gval, glists = gold_matrix(tr["queries"], tr["doc_ids"])
     te_glists = None if a.selection_only else gold_matrix(te["queries"], te["doc_ids"])[2]
 
-    # SAME SLICING RULE AS operator_scorer.py: dev first, then fit from what is
+    # SAME SLICING RULE AS handcrafted_scorer.py: dev first, then fit from what is
     # left. matsci train holds 1,304 queries, so a 2,500-query fit set does not
     # exist and the request is silently truncated -- print what actually happened.
     Q = len(tr["queries"])
@@ -1510,7 +1459,7 @@ def main():
     # rather than silently replacing another configuration's predictions. Without
     # the loss in the name a legacy run would overwrite the corrected one and the
     # two would be indistinguishable afterwards.
-    LSUF = "_operatorloss" if a.loss == "operator" else "_fixedloss"
+    LSUF = "_operatorloss" if a.loss == 'handcrafted' else "_fixedloss"
     # bank/predicted results must never overwrite the loo ones they are read against.
     LSUF += "" if a.popularity == "loo" else f"_{a.popularity}pop"
     TAG = {k: f"{k}{LSUF}" for k in
@@ -1534,10 +1483,10 @@ def main():
                     else SortedMLPScorer(device, JFIX, a.mlp_hidden) if arm in MLP_ARMS
                     else GatedScorer(device, a.hidden))
 
-        # THE MLP ARM READS ITS OWN POPULARITY. Its learned predictor is part of
+        # THE MLP ARM READS ITS OWN BACKGROUND MATCHABILITY. Its learned predictor is part of
         # the proposal, not a run-level axis, so it is selected per arm here while
-        # every other arm keeps whatever --popularity chose.
-        # EACH MLP VARIANT DIFFERS ONLY IN ITS POPULARITY SOURCE, so one run
+        # every other arm keeps whatever --matchability chose.
+        # EACH MLP VARIANT DIFFERS ONLY IN ITS background matchability SOURCE, so one run
         # measures all three against the same baseline on the same split:
         #   mlp      joint  -- predictor trained with the scorer (the proposal)
         #   mlp2s    _pred  -- predictor fitted to the bank, then frozen
@@ -1555,7 +1504,7 @@ def main():
             dtr = _torch.as_tensor(pop_joint["de_tr"], device=device)
             dte = _torch.as_tensor(pop_joint["de_te"], device=device)
             tgt = _torch.as_tensor(pop_joint["target_tr"], device=device)
-            # ONE predictor shared by both splits: the test popularity must come
+            # ONE predictor shared by both splits: the test background matchability must come
             # from the network that training produced, not a second copy.
             return (Pop("joint", predictor=gj, doc_emb=dtr, target=tgt),
                     Pop("joint", predictor=gj, doc_emb=dte))
@@ -1565,10 +1514,10 @@ def main():
         model = build()
         npar = sum(p.numel() for p in model.parameters())
         print(f"  parameters: {npar}"
-              + ("  popularity: predictor, JOINT with the scorer" if joint_here
-                 else "  popularity: predictor, frozen (two-stage)" if vk == "_pred"
-                 else "  popularity: train-answer bank (measured, not learned)" if vk == "_bank"
-                 else f"  popularity: {tr.get('pop_mode', 'loo')}"))
+              + ("  background matchability: predictor, JOINT with the scorer" if joint_here
+                 else "  background matchability: predictor, frozen (two-stage)" if vk == "_pred"
+                 else "  background matchability: train-answer bank (measured, not learned)" if vk == "_bank"
+                 else f"  background matchability: {tr.get('pop_mode', 'loo')}"))
         t0 = time.time()
         per_seed = {}
         # BEFORE the branch. An untrained arm never enters the seed loop, so an
@@ -1608,13 +1557,13 @@ def main():
                 if len(seeds) > 1:
                     print(f"  -- seed {sd} --")
                 if arm in ("setmlp", "dualsetmlp") and a.distill_epochs > 0:
-                    assert a.distill_operator and os.path.exists(a.distill_operator), (
-                        "--distill_epochs requires an existing --distill_operator JSON")
+                    assert a.distill_handcrafted and os.path.exists(a.distill_handcrafted), (
+                        '--distill_epochs requires an existing --distill_handcrafted JSON')
                     teacher = CurrentScorer(device)
-                    teacher.load(json.load(open(a.distill_operator)))
-                    print(f"  distilling fitted operator for {a.distill_epochs} epochs; "
+                    teacher.load(json.load(open(a.distill_handcrafted)))
+                    print(f"  distilling fitted handcrafted scorer for {a.distill_epochs} epochs; "
                           "teacher is not used at inference")
-                    distill_operator(model, teacher, tr, fit_rows, device, a, torch, seed=sd)
+                    distill_handcrafted(model, teacher, tr, fit_rows, device, a, torch, seed=sd)
                 if a.kfold >= 2:
                     # Folds choose the epoch count; the final fit then uses EVERY
                     # train query. There is no held-out data left to select on,
@@ -1664,19 +1613,19 @@ def main():
         json.dump(state, open(f"{out}/params_semantic_{tag}_{a.dataset}.json", "w"), indent=1)
         # THE JOINT PREDICTOR IS HALF THE MODEL, SO IT HAS TO BE HALF THE CHECKPOINT.
         # Only the pre-joint two-stage fit was ever written to disk, so once the
-        # process exited the trained popularity was gone and the params json on disk
+        # process exited the trained background matchability was gone and the params json on disk
         # described a scorer paired with a predictor that no longer existed. Anything
         # reloading this arm -- the graph fusion warm start, a rerun, a transfer --
         # would silently get the wrong half. Written next to the scorer under a
         # matching name so the pair cannot be separated by accident.
         if best_pop_seed is not None:
             _torch.save(best_pop_seed, f"{out}/popnet_semantic_{tag}_{a.dataset}.pt")
-            print(f"[{arm}] saved joint popularity predictor -> "
+            print(f"[{arm}] saved joint background matchability predictor -> "
                   f"popnet_semantic_{tag}_{a.dataset}.pt")
         pred, test_ndcg = None, None
         if not a.selection_only:
             # pop_te, NOT the run-level default. Without it a joint run scored
-            # test with leave-one-out popularity and the trained predictor was
+            # test with leave-one-out background matchability and the trained predictor was
             # never used at inference at all.
             sc = score_rows(model, te, np.arange(len(te["queries"])),
                             device, a.qbatch, torch, pop=pop_te)
@@ -1699,7 +1648,7 @@ def main():
                                 ("train_fit", "dev", "epochs", "patience", "lr",
                                  "hidden", "ds_hidden", "ds_dropout", "mlp_hidden",
                                  "set_hidden", "set_dropout",
-                                 "distill_operator", "distill_epochs", "distill_lr",
+                                 'distill_handcrafted', "distill_epochs", "distill_lr",
                                  "qbatch", "seed", "seeds", "loss", "popularity",
                                  "select_on", "kfold", "mlp_popularity",
                                  "mlp_pop_joint", "pop_lambda",
@@ -1707,9 +1656,9 @@ def main():
             "popularity": pop_info,
             "actual_split": {"fit": int(len(fit_rows)), "dev": int(len(dev_rows)),
                              "train_queries": int(Q), "test_queries": len(te["queries"])},
-            "loss": ("operator objective (operator_scorer.py): full-corpus denominator "
+            "loss": ('handcrafted scorer objective (handcrafted_scorer.py): full-corpus denominator '
                      "including the query's other golds, weighted per (query, gold) pair"
-                     if a.loss == "operator" else
+                     if a.loss == 'handcrafted' else
                      "multi-gold corrected: other golds excluded from each denominator, "
                      "averaged within query then equally across queries"),
             "arms": results, "quick_summary": summary}

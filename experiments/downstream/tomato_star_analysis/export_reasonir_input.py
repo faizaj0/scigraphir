@@ -3,7 +3,7 @@
 API-free.  Output: outputs/caches/reasonir/reasonir_input_tomato.json
   {"queries": [{"id", "text", "gold": [key]}], "docs": [{"id", "text"}]}
 
-Query text follows the CARGO delta protocol (question + background survey, plus the
+Query text follows the SciGraphIR delta protocol (question + background survey, plus the
 hypothesis so far for step>=1), i.e. the same text the Qwen3 arm was ranked with.
 The corpus is the full TOMATO test inspiration pool (3,033 docs).
 

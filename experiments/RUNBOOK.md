@@ -1,4 +1,4 @@
-# Runbook: one SIR-4 domain, start to finish
+# Runbook: SIR-4 preparation and training
 
 Every command takes `--dataset sir4_<domain>` or `--domain <domain>`. Domains:
 `cs`, `biology`, `physics`, `matsci`. Substitute throughout; the examples use
@@ -13,25 +13,82 @@ start. If it says `tomato`, stop.
 
 ---
 
-## A. Local preparation
+## Default graph workflow
+
+The full method uses the **default SciAfford graph** assembled by
+[build_hybrid_graph.py](prep/build_hybrid_graph.py): affordance structure, OpenIE query
+entity seeds, entity-to-paper mention edges and direct paper-to-affordance links.
+Its graph names end in `_hyb`.
+
+The component preparation recipe below produces the `_v16sc` inputs and per-field
+bundles. Follow the [graph construction guide](../sciafford/README.md#build-the-default-graph)
+to also construct the OpenIE inputs and assemble the default graph. Once both components
+exist, the final construction and checks are:
+
+```bash
+cd "$SCIGRAPHIR_ROOT"
+python experiments/prep/build_hybrid_graph.py --dataset sir4_physics --cap 30
+for split in train test; do
+  python experiments/eval/audit_graph.py --dataset sir4_physics \
+    --split "$split" --suffix hyb --sample 40
+done
+```
+
+Use [colab_sir4_hyb.ipynb](notebooks/colab_sir4_hyb.ipynb) for the full-method SIR-4 runs.
+It expects the per-field bundles, the learned scorer warm starts, the engine archive,
+and `sir4_hyb_bundle.zip` on Drive. That additional zip must retain repository-relative
+paths for each `_hyb` graph's `raw/` and `processed/stage1/` files. For all four fields,
+create it after building all eight merged graphs:
+
+```python
+from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
+
+root = Path.cwd()  # repository root
+paths = []
+for field in ("cs", "biology", "physics", "matsci"):
+    for split in ("train", "test"):
+        graph = root / "retriever/data" / f"sir4_{field}_{split}_hyb"
+        paths.append(graph / "raw/documents.json")
+        paths.extend(graph / "processed/stage1" / name
+                     for name in ("nodes.csv", "edges.csv", "relations.csv", f"{split}.json"))
+missing = [str(path) for path in paths if not path.is_file()]
+if missing:
+    raise FileNotFoundError("Missing graph inputs: " + ", ".join(missing))
+with ZipFile(root / "experiments/sir4_hyb_bundle.zip", "w", ZIP_DEFLATED) as bundle:
+    for path in paths:
+        bundle.write(path, path.relative_to(root))
+```
+
+The remaining sections retain the earlier component-graph workflow and its run records.
+Its `_v16sc` paths describe that component; the default graph and full-method notebook
+are the `_hyb` workflow above.
+
+## A. Local component preparation
 
 ### 1. Stage the export  (seconds, free)
 
 ```bash
-cd $SCIGRAPHIR_ROOT && python3 experiments/prep/stage_sir4.py --domain physics
+cd "$SCIGRAPHIR_ROOT"
+python3 sir-4/prepare_data.py --domain physics
+python3 experiments/prep/stage_sir4.py --domain physics
 ```
 
-Verifies duplicate ids, gold-in-corpus, empty questions and documents, then
+The first command unpacks the [included dataset](../sir-4/dataset/README.md) after
+checking its hashes. The available Physics training split contains 3,087 queries;
+its difference from the thesis count is recorded in the dataset guide.
+
+Staging verifies duplicate ids, gold-in-corpus, empty questions and documents, then
 writes the corpus to both `experiments/data/<domain>/` and
 `retriever/data/sir4_<domain>_{train,test}/`, which is where the pipeline
 reads. It refuses to stage if any check fails.
 
-### 2. Extract frames  (PAID, the dominant cost)
+### 2. Extract affordance representations  (PAID, the dominant cost)
 
 Four runs: two sides x two splits.
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && for s in test train; do for side in doc query; do python3 extract_frames.py --dataset sir4_physics --side $side --split $s --workers 128; done; done
+cd $SCIGRAPHIR_ROOT/sciafford && for s in test train; do for side in doc query; do python3 extract_affordances.py --dataset sir4_physics --side $side --split $s --workers 128; done; done
 ```
 
 Resumable. Re-running picks up only what is missing, because a failed item is
@@ -46,16 +103,16 @@ rate-limit burst backs off rather than failing the item. If you see sustained
 429s, drop to 64; going much above 128 buys little, because the tail is
 dominated by slow individual calls rather than queueing.
 
-### 3. Probes  (PAID, small)
+### 3. hypothetical answers  (PAID, small)
 
 ```bash
-cd $SCIGRAPHIR_ROOT/retriever && for s in test train; do python3 probes/gen_probes.py --dataset sir4_physics --split $s --workers 128; done
+cd $SCIGRAPHIR_ROOT/retriever && for s in test train; do python3 hypothetical_answers/generate_answers.py --dataset sir4_physics --split $s --workers 128; done
 ```
 
-About 7 to 8 short search phrases per query. These are the operator's `S` and
+About 7 to 8 short search phrases per query. These are the handcrafted scorer's `S` and
 `M` terms, not a graph channel.
 
-**Check before moving on:** frame and probe line counts against corpus size.
+**Check before moving on:** affordance representation and hypothetical answer line counts against corpus size.
 
 ```bash
 wc -l $SCIGRAPHIR_ROOT/sciafford/cache/sir4_physics/*.jsonl $SCIGRAPHIR_ROOT/retriever/probes/cache/sir4_physics/*.jsonl
@@ -64,10 +121,10 @@ wc -l $SCIGRAPHIR_ROOT/sciafford/cache/sir4_physics/*.jsonl $SCIGRAPHIR_ROOT/ret
 A shortfall of a handful of documents is normal (title-only records, or items
 that exhausted their retries); re-run step 2 to pick the latter up.
 
-### 4. Build both graphs  (free)
+### 4. Build the train and test affordance components  (free)
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && for s in test train; do python3 build_greasoner_dataset.py --dataset sir4_physics --split $s --tau_canon 0.95 --no_entity_seeds --no_probe_seeds; done
+cd $SCIGRAPHIR_ROOT/sciafford && for s in test train; do python3 build_greasoner_dataset.py --dataset sir4_physics --split $s --tau_canon 0.95 --no_entity_seeds --no_answer_seeds; done
 ```
 
 `--tau_canon 0.95` is not the default and matters. At the default 0.85, 66,043
@@ -81,7 +138,7 @@ To choose the threshold for a new domain, sweep it offline first from the cached
 concept embeddings rather than rebuilding: the sweep predicted the built graph
 exactly on CS.
 
-### 5. Audit both graphs  (free)
+### 5. Validate both affordance components  (free)
 
 ```bash
 cd $SCIGRAPHIR_ROOT/experiments && for s in test train; do python3 eval/audit_graph.py --dataset sir4_physics --split $s --spread --sample 40; done
@@ -112,7 +169,7 @@ a runtime later.
 
 ---
 
-## B. Colab
+## B. Earlier component-graph Colab workflow
 
 Upload `experiments/sir4_<domain>_bundle.zip` to `MyDrive/cargo-gfmrag/`,
 open `colab_train_sir4_<domain>_fusion.ipynb`, and run the cells in order.
@@ -123,7 +180,7 @@ open `colab_train_sir4_<domain>_fusion.ipynb`, and run the cells in order.
 | 3a, 3b, 3c | engine install, config rewrite, PyG version fix | 2 min |
 | 4 | Qwen3 model (cached on Drive after the first domain) | 1 min |
 | 5 | unpack bundle, verify every path | 1 min |
-| **5b** | **Phase 3**: fit the operator, cache its components | ~6 min |
+| **5b** | **Phase 3**: fit the handcrafted scorer, cache its components | ~6 min |
 | **5c** | **Phase 4**: BGE baseline, scored immediately | ~2 min |
 | 6 | structural audit | seconds |
 | 7 | `run_model` | - |
@@ -147,7 +204,7 @@ Drive, so a disconnect still leaves the best checkpoint.
   40 GB card.
 - **`tau_canon 0.95`,** chosen from measured merge coherence, not the 0.85
   default.
-- **Warm start** from this corpus's own operator fit, not the TOMATO constants
+- **Warm start** from this corpus's own handcrafted scorer fit, not the TOMATO constants
   hardcoded in `fusion_reasoner.py`.
 
 ## Estimated cost of the remaining domains
@@ -163,7 +220,7 @@ Everything after extraction is free.
 ## C. Table-4 path interpretations (OpenIE graph / SciGraphIR / SciGraphIR + CCMP, TOMATO-Star + SIR-4 CS)
 
 `colab_table4_openie.ipynb` (generated by `prep/build_table4_notebook.py`, which embeds
-`eval/table4.py`) produces the GFM-RAG Table-4 analogue for three arms, OpenIE graph, SciGraphIR (frame graph,
+`eval/table4.py`) produces the GFM-RAG Table-4 analogue for three arms, OpenIE graph, SciGraphIR (SciAfford graph,
 no CCMP) and SciGraphIR + CCMP (gate per hop): per dataset
 `outputs/scan/<dataset>/table4_<dataset>.{md,tex}` + `_candidates.json`, and
 `outputs/scan/table4_all.tex` for both datasets in one table. Run cell 1, then 2 to 6; cells 2b-3g
@@ -173,14 +230,14 @@ are no-ops when `scan_all_openie.json` and `hops_t4_*.json` are already on Drive
   fused <= 10), deepest-buried 150 queries max; beam 10, top-5 paths, all three arms (`openie`, `frame_nocc`, `frame_ccmp`).
 - Ranking ("best example"): best over the recovering arms of rank gap + typed-relation share + readability
   - hub/paper hops + log path weight; simple paths only (no node twice); one example per query. See the docstring of `eval/table4.py`.
-- To re-render locally (different filter, QUARTET field pairs, more examples), download `hops_t4_*.json` and run:
+- To re-render locally (different filter, SIR-4 field pairs, more examples), download `hops_t4_*.json` and run:
 
 ```bash
 python3 eval/table4.py --dataset sir4_cs \
   --queries ../retriever/data/sir4_cs_test/raw/test.json \
   --docs ../retriever/data/sir4_cs_test/raw/documents.json \
   --edges ../retriever/data/sir4_cs_test_v16sc/processed/stage1/edges.csv \
-  --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json \
+  --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json \
   --arm "OpenIE graph=hops_t4_openie.json" --arm "SciGraphIR=hops_t4_frame_nocc.json" \
   --arm "SciGraphIR + CCMP=hops_t4_frame_ccmp.json" --recover any \
   --n-tex 3 --paths 3 --out results/qualitative/table4_sir4_cs

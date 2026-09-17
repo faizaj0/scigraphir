@@ -54,7 +54,7 @@ def score_one(ranked, golds, sets_):
 # --- inputs, unpacking any bundle this runtime does not already have ----------
 def sets_path(d):
     tag = "cs_test_final" if d == "cs" else f"{d}_test_low"
-    return f"{SCIGRAPHIR_ROOT}/benchmark/data/benchmark/{tag}/sets.json"
+    return f"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/{tag}/sets.json"
 
 def ensure(d):
     """Return (queries, sets) for a domain, or None if its bundle is unavailable."""
@@ -79,7 +79,7 @@ def ensure(d):
 
 # --- arm discovery ------------------------------------------------------------
 # Every arm is a predictions file. The run-directory name is the only record of
-# which encoder the operator used, so it is also the arm label.
+# which encoder the handcrafted scorer used, so it is also the arm label.
 BANNED = ("smoke", "routed", "leverd", "lossv2", "nodistill")
 
 def arms_for(d):
@@ -180,7 +180,7 @@ for slc in ("all", "same", "cross", "similar", "dissimilar"):
 
 # The comparison the retrain was for, on its own, because the wide table above is
 # hard to read across three arms at once.
-out("### Qwen3 operator minus BGE operator (fusion, `all` slice)")
+out('### Qwen3 handcrafted scorer minus BGE handcrafted scorer (fusion, `all` slice)')
 out("| domain | n | " + " | ".join(lb for _, lb in METRICS) + " | wins |")
 out("|---|--:|" + "--:|" * len(METRICS) + "--:|")
 for d in DOMAINS:

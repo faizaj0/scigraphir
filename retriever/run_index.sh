@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Stage-1 KG construction for one TOMATO dataset, vanilla GFM-RAG engine, Mac-friendly.
+# Build the OpenIE component used by the default SciAfford graph.
+# It can also be used alone for the OpenIE graph control. Accepts any staged dataset.
 #
-# Usage:  bash run_index.sh tomato_mini        # then tomato_train / tomato_test
+# Usage:  bash run_index.sh sir4_physics_train  # then sir4_physics_test
 #         FORCE=true bash run_index.sh <name>  # force clean rebuild; default resumes (skips built graph, continues NER cache)
 # Needs:  OPENAI_API_KEY in the environment; gfmrag installed (see install steps).
 #

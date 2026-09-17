@@ -97,7 +97,7 @@ def run():
     plt.tight_layout(); plt.savefig(FIGS / "explore_gold_domains.png", dpi=150); plt.close()
 
     # ---- examples ----
-    lines = ["# CARGO / TOMATO-Star — example queries (full test)\n"]
+    lines = ["# SciGraphIR / TOMATO-Star — example queries (full test)\n"]
     for s in ("same", "cross"):
         ex = [q for q in queries if q["stratum"] == s][:3]
         lines.append(f"\n===== {s.upper()}-DOMAIN EXAMPLES =====")

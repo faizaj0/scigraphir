@@ -1,6 +1,6 @@
 """
 build_sir4_hyb_notebook.py -- SIR-4, all four fields in ONE notebook: SciGraphIR on the merged graph
-(frame + entity seeds + mention edges + mechanism shortcuts, prep/build_hybrid_graph.py) without and
+(affordance representation + entity seeds + mention edges + mechanism shortcuts, prep/build_hybrid_graph.py) without and
 with CCMP, compared against the existing OpenIE-graph row and the scorer alone.
 
 Fields run quickest first (matsci, physics, biology, cs). Every (field, arm) is its OWN cell, finished
@@ -24,14 +24,14 @@ sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb          # noqa: E402
 import build_sir4_openie_notebook as oi          # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
 ORDER = ["matsci", "physics", "biology", "cs"]     # quickest first (1.3k, 3.1k, 4.0k, 5.4k training queries)
 TITLE = {"cs": "CS", "biology": "Bio", "physics": "Phys.", "matsci": "MS"}
 
 HEADER = '''# SIR-4, merged graph: SciGraphIR without / with CCMP vs the OpenIE-graph row, four fields, one notebook
 
-The merged graph (`sir4_<field>_{train,test}_hyb`) is the SciAffordGraph plus the query's named entities as
+The merged graph (`sir4_<field>_{train,test}_hyb`) is the SciAfford graph plus the query's named entities as
 extra seeds, entity->paper mention edges from the OpenIE graph (entities in at most 30 papers) and direct
 paper->function / limitation / mechanism shortcut edges. Every arm shares the field's multi-view scorer
 warm start, the graph reasoner, the fusion gate and the ranking loss; the rows differ only in the graph
@@ -200,7 +200,7 @@ for label, sc, dg, pk in ROWS:
 tex += [BS + "bottomrule", BS + "end{tabular}",
         BS + "caption{Graph construction on SIR-4 " + TITLE[d] + " (nDCG@5 and Recall@5, " + BS + "%). All rows share the multi-view scorer, "
         "graph reasoner, fusion gate and ranking loss; the merged graph adds the query's named entities as seeds, entity--paper mention "
-        "edges and direct paper--mechanism edges to the SciAffordGraph. $" + BS + "Delta$ is the relative same-to-cross reduction; the last "
+        "edges and direct paper--mechanism edges to the SciAfford graph. $" + BS + "Delta$ is the relative same-to-cross reduction; the last "
         "column is the paired bootstrap over cross-field queries against the OpenIE-graph row; $^{*}$ marks a 95" + BS + "% CI that excludes zero.}",
         BS + "label{tab:hyb-sir4-" + d + "}", BS + "end{table}"]
 open(f"{OUT_ROOT}/table_sir4_{d}.tex", "w").write("\\n".join(tex) + "\\n"); print("\\n" + "\\n".join(tex)); print("\\nwrote", f"{OUT_ROOT}/table_sir4_{d}.tex")
@@ -251,7 +251,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values())
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -263,7 +263,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
     cfg_cell = dict(src[9]); cfg_src = "".join(cfg_cell["source"])
     guard = '    assert "sir4" not in t, f"a sir4 dataset reference survived in {cfg}"\n'
@@ -291,10 +291,10 @@ def main() -> int:
               .replace('assert "entity" in types and "document" in types, f"{g_of(d, s)} is not an entity+document graph: {dict(types)}"',
                        'assert "entity" in types and "document" in types and "function" in types, f"{g_of(d, s)} is not a merged graph: {dict(types)}"')
               .replace('        print(f"  {g_of(d, s):22} entity {types[\'entity\']:>8,}  document {types[\'document\']:>7,}  "',
-                       '        print(f"  {g_of(d, s):24} entity {types[\'entity\']:>7,}  frames {sum(v for k, v in types.items() if k not in (\'entity\', \'document\')):>8,}  document {types[\'document\']:>7,}  "'))
+                       '        print(f"  {g_of(d, s):24} entity {types[\'entity\']:>7,}  affordance representations {sum(v for k, v in types.items() if k not in (\'entity\', \'document\')):>8,}  document {types[\'document\']:>7,}  "'))
     assert "_hyb" in unpack and "HYB_BUNDLE" in unpack and '"function" in types' in unpack
-    helpers = oi.HELPERS.replace("# 4a. Helpers: cache restore/save (graph-keyed, so the OpenIE graphs never collide with the\n# frame graphs' artefacts), and the per-field preparation.",
-                                 "# 4a. Helpers: cache restore/save (graph-keyed, so the merged graphs get their own index and component\n# files), and the per-field preparation (embeddings, index, operator + scorer components, scorer warm start).")
+    helpers = oi.HELPERS.replace("# 4a. Helpers: cache restore/save (graph-keyed, so the OpenIE graphs never collide with the\n# affordance representation graphs' artefacts), and the per-field preparation.",
+                                 '# 4a. Helpers: cache restore/save (graph-keyed, so the merged graphs get their own index and component\n# files), and the per-field preparation (embeddings, index, handcrafted scorer + scorer components, scorer warm start).')
 
     cells = [md(HEADER), md("## 1. GPU + Drive + paths"), code(paths),
              md("## 2. Unpack the field bundles + the merged-graph bundle + current scripts"), code(unpack),

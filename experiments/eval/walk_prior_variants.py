@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-walk_prior_variants.py -- cheap construction levers for the frame graph, judged by the same untrained walk.
+walk_prior_variants.py -- cheap construction levers for the SciAfford graph, judged by the same untrained walk.
 
 Variants (all on the stage-1 test graph, no training):
-  base        SciAffordGraph as built
-  direct      + one-hop paper->frame edges for the mechanism frames a paper already owns through its
+  base        SciAfford graph as built
+  direct      + one-hop paper->affordance representation edges for the mechanism affordance representations a paper already owns through its
               methods / tasks / findings (contributes->achieves, ->overcomes, ->limited_by, ->works_via;
               addresses->limited_by; reports->concerns / ->explains). Makes function/limitation seeds
               1 hop from papers instead of 2.
   hybrid      + the OpenIE graph's entity->paper mention edges, entities with OpenIE degree <= CAP only
-              (specific names, no hubs), and the query's OpenIE entity seeds added to its frame seeds.
+              (specific names, no hubs), and the query's OpenIE entity seeds added to its affordance representation seeds.
   invdeg      restart mass per seed proportional to 1/degree instead of uniform (specific seeds count more).
   direct+hybrid, direct+hybrid+invdeg
 Prints walk nDCG@5 per dataset x stratum x variant.
@@ -53,8 +53,8 @@ def read_graph(stage1):
 
 
 def direct_edges(types, edges):
-    """paper -> frame shortcuts through the paper's own methods / tasks / findings"""
-    out = defaultdict(set)                     # method/task/finding node -> frames it exposes
+    """paper -> affordance representation shortcuts through the paper's own methods / tasks / findings"""
+    out = defaultdict(set)                     # method/task/finding node -> affordance representations it exposes
     for a, r, b in edges:
         if r in ("achieves", "overcomes", "limited_by", "works_via", "concerns", "explains"):
             out[a].add(b)
@@ -110,7 +110,7 @@ def main() -> int:
         docs = np.array([i for i, t in enumerate(types) if t == "document"])
         queries = json.load(open(f"{fs1}/test.json"))
         oq = {q["id"]: q for q in json.load(open(f"{os1}/test.json"))}
-        # OpenIE mention edges with a degree cap; entities become new nodes appended to the frame graph
+        # OpenIE mention edges with a degree cap; entities become new nodes appended to the SciAfford graph
         onames, otypes, oidx, oedges = read_graph(os1)
         odeg = np.zeros(len(onames)); 
         for u, _, v in oedges: odeg[u] += 1; odeg[v] += 1
@@ -142,9 +142,9 @@ def main() -> int:
         for s in strata:
             sel = [i for i, q in enumerate(queries) if s == "all" or (q.get("stratum") or "same") == s]
             out(f"| {ds} | {s} | {len(sel)} | " + " | ".join(f"{100 * np.mean([res[v][i] for i in sel]):.2f}" for v in VARIANTS) + " |")
-        print(f"  {ds}: frame edges {len(edges):,} | direct +{len(dedges):,} | hybrid +{len(hyb):,} mention edges from {len(ent_new):,} entities (cap {a.cap})", file=sys.stderr)
+        print(f"  {ds}: affordance representation edges {len(edges):,} | direct +{len(dedges):,} | hybrid +{len(hyb):,} mention edges from {len(ent_new):,} entities (cap {a.cap})", file=sys.stderr)
     L.append("")
-    L.append(f"walk nDCG@5 (%), 3-step PPR restart 0.15 from the query's seeds. direct = paper->frame shortcuts for the mechanism frames a paper already "
+    L.append(f"walk nDCG@5 (%), 3-step PPR restart 0.15 from the query's seeds. direct = paper->affordance representation shortcuts for the mechanism affordance representations a paper already "
              f"owns via its methods/tasks/findings; hybrid = + OpenIE entity->paper mention edges for entities of OpenIE degree <= {a.cap}, and the "
              "query's OpenIE entity seeds; invdeg = restart mass per seed proportional to 1/degree.")
     text = "\n".join(L); print(text)

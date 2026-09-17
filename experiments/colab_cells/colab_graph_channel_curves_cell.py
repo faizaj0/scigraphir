@@ -1,8 +1,8 @@
 # ===== Graph-channel curves for EVERY dataset with hops files on Drive (paste into any Colab kernel; needs only Drive) =====
 # Per dataset and stratum: share of golds the GRAPH CHANNEL ALONE ranks within k (log k), on all golds and on the golds Qwen3 cosine
-# buries beyond rank 100. Curves: SciAffordGraph reasoner +CCMP, the same weights with the gate off, the OpenIE entity-graph reasoner,
+# buries beyond rank 100. Curves: SciAfford graph reasoner +CCMP, the same weights with the gate off, the OpenIE entity-graph reasoner,
 # and the text scorer / cosine as references. Reads outputs/scan/<dataset>/hops_frame_ccmp.json (+ hops_frame_ccmp_off.json, hops_openie.json).
-# SIR-4 fields use the per-gold QUARTET stratum when the CARGO tree is unpacked, else the query stratum stored in the hops file.
+# SIR-4 fields use the per-gold SIR-4 stratum when the SciGraphIR tree is unpacked, else the query stratum stored in the hops file.
 import os, sys, glob, json, subprocess
 if not os.path.isdir("/content/drive/MyDrive"):
     from google.colab import drive; drive.mount("/content/drive")
@@ -15,17 +15,17 @@ graph_channel_curves.py -- where each scorer ranks the gold, as cumulative curve
 on ALL golds and on the SEMANTICALLY DIFFICULT golds (Qwen3 cosine ranks them beyond --buried), which is what the graph
 channel is for. Two rows: the graph channel alone, and the final ranking.
 
-  (a) graph channel alone, all golds          SciAffordGraph reasoner . OpenIE entity-graph reasoner . scorer . cosine
+  (a) graph channel alone, all golds          SciAfford graph reasoner . OpenIE entity-graph reasoner . scorer . cosine
   (b) graph channel alone, buried golds       same curves on golds with cosine rank > --buried
   (c) final ranking, all golds                SciGraphIR (fused) . OpenIE model (fused) . multi-view scorer . cosine
   (d) final ranking, buried golds
 
-One figure per stratum (cross / same) from hops_frame_ccmp.json (+ hops_openie.json); QUARTET eval.json gives the
+One figure per stratum (cross / same) from hops_frame_ccmp.json (+ hops_openie.json); SIR-4 eval.json gives the
 per-gold stratum for SIR-4, else the query stratum in the hops file. Ranks are the scan ranks stored per gold:
 rank = {fused, graph, scorer, dense}; the OpenIE model's fused/scorer are its own.
 
     python3 eval/graph_channel_curves.py --dir results/qualitative/drive_scan_sir4_cs \
-        --quartet ../benchmark/data.nosync/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_channel_curves_cs
+        --sir4 ../sir-4/data/benchmark/cs_test_final/eval.json --out ../figures/fig_graph_channel_curves_cs
 """
 import argparse, json, os
 
@@ -57,7 +57,7 @@ def style(ax):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--quartet", default=None)
+    ap.add_argument("--dir", required=True); ap.add_argument("--prefix", default="hops_"); ap.add_argument("--sir4", "--sir4", dest='sir4', default=None)
     ap.add_argument("--out", required=True); ap.add_argument("--buried", type=int, default=100); ap.add_argument("--title", default="")
     ap.add_argument("--final", action="store_true", help="also draw the final-ranking row (fused scores)")
     a = ap.parse_args()
@@ -65,12 +65,12 @@ def main():
     E = load(f"{a.dir}/{a.prefix}openie.json") if os.path.exists(f"{a.dir}/{a.prefix}openie.json") else {}
     O = load(f"{a.dir}/{a.prefix}frame_ccmp_off.json") if os.path.exists(f"{a.dir}/{a.prefix}frame_ccmp_off.json") else {}   # same weights, gate off
     unit = "query stratum (hops file)"
-    if a.quartet and os.path.exists(a.quartet):
+    if a.sir4 and os.path.exists(a.sir4):
         qz = {}
-        for x in json.load(open(a.quartet)):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qz[(x["id"], d)] = m.get("stratum")
         for k, v in F.items(): v["stratum"] = qz.get(k) or "unlabelled"
-        unit = "gold stratum (QUARTET)"
+        unit = "gold stratum (SIR-4)"
     n_doc = max((v["n_doc"] or 0) for v in F.values()) or 5000; ks = [k for k in KS if k < n_doc] + [n_doc]
     labels = {v["stratum"] for v in F.values()} - {"unlabelled"}
     strata = [s for s in ("cross", "same") if s in labels] or sorted(labels) or ["all"]     # SIR-4: cross/same; TOMATO/MIR: their own labels
@@ -84,7 +84,7 @@ def main():
         fig, axes = plt.subplots(nrow, 2, figsize=(9.2, 3.9 * nrow + 0.4), gridspec_kw={"wspace": 0.24, "hspace": 0.5}); axes = axes.ravel()
         for ax in axes: style(ax)
         # curve specs: label, colour, line style, marker, filled
-        SPEC = {"frame_on": ("SciAffordGraph reasoner, +CCMP", C_FRAME, "-", "o", True), "frame_off": ("SciAffordGraph reasoner, CCMP gate off (same weights)", C_FRAME, "--", "o", False),
+        SPEC = {"frame_on": ("SciAfford graph reasoner, +CCMP", C_FRAME, "-", "o", True), "frame_off": ("SciAfford graph reasoner, CCMP gate off (same weights)", C_FRAME, "--", "o", False),
                 "entity": ("OpenIE entity-graph reasoner", C_ENT, "-", "s", True), "scorer": ("multi-view scorer, text only (reference)", C_SC, "-.", "^", True),
                 "cosine": ("Qwen3 cosine (reference)", C_COS, ":", "D", False)}
         handles = {}
@@ -130,8 +130,8 @@ for d in sorted(glob.glob(f"{SCAN}/*/")):
     if not os.path.exists(f"{d}/hops_frame_ccmp.json"): continue
     out = f"{d}/fig_graph_channel_curves_{ds}"
     cmd = [sys.executable, "/content/eval/graph_channel_curves.py", "--dir", d, "--out", out, "--title", f"{ds}"]
-    _qt = f"{_root}/benchmark/data.nosync/benchmark/{ds.replace('sir4_', '')}_test_final/eval.json"
-    if os.path.exists(_qt): cmd += ["--quartet", _qt]
+    _qt = f"{_root}/sir-4/data/benchmark/{ds.replace('sir4_', '')}_test_final/eval.json"
+    if os.path.exists(_qt): cmd += ["--sir4", _qt]
     r = subprocess.run(cmd, capture_output=True, text=True); print("=" * 30, ds); print(r.stdout[-3000:], r.stderr[-1500:])
     for p_ in sorted(glob.glob(out + "_*.png")): print(os.path.relpath(p_, DRIVE)); display(Image(p_))
     if os.path.exists(out + "_summary.json"): allsum[ds] = json.load(open(out + "_summary.json"))

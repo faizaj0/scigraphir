@@ -13,7 +13,7 @@ Defaults are the biology optimal-transport example and the CS creativity and rec
 
 Other available merged CCMP epoch/batch runs are considered after the preferred recipe. Control runs, smoke runs and other fields are excluded. The corresponding field scorer is restored, preferring `outputs/sir4_hyb/semantic_<dataset>/`. Missing merged graph files are extracted from the shared `sir4_hyb_bundle.zip` on Drive. All six fixed paths and their starting seeds have been verified in the local merged graphs.
 
-If **no merged checkpoint is available**, the previous frame checkpoint and `_test_v16sc` graph are used with an explicit fallback message. A present merged checkpoint with missing or incompatible assets stops the run rather than silently switching experiments. Set `PREFER_MERGED = False` only to deliberately reproduce the previous frame setup. Selection happens once per dataset and is recorded in the manifest/report; all interventions and precisions use that same checkpoint/graph.
+If **no merged checkpoint is available**, the previous affordance representation checkpoint and `_test_v16sc` graph are used with an explicit fallback message. A present merged checkpoint with missing or incompatible assets stops the run rather than silently switching experiments. Set `PREFER_MERGED = False` only to deliberately reproduce the previous affordance representation setup. Selection happens once per dataset and is recorded in the manifest/report; all interventions and precisions use that same checkpoint/graph.
 
 The notebook tests seven conditions: off, native CCMP, frozen native gates, path-node gates only, outside-node gates only, outside suppression only, and outside amplification only. Every condition uses the same model weights, query, graph, seeds, target and paths. Outside gates are frozen from the native run and modified **after normalization without renormalization**.
 
@@ -29,7 +29,7 @@ The path weight retains the engine's `visualize()` convention: mean edge gradien
 
 ## Outputs and checks
 
-Results live under `outputs/ccmp_mechanism/<dataset>/<merged-or-frame>/<precision>/<protection>/<manifest-hash>/` on Drive:
+Results live under `outputs/ccmp_mechanism/<dataset>/<merged-or-affordance representation>/<precision>/<protection>/<manifest-hash>/` on Drive:
 
 - `report.md`: treatment table and cautious interpretation per path.
 - `results.json`: scores, ranks, paths, per-hop gradients/gates, frontier gate statistics, effects, historical comparison and checks.
@@ -40,7 +40,7 @@ Results live under `outputs/ccmp_mechanism/<dataset>/<merged-or-frame>/<precisio
 
 The workflow loads checkpoints strictly, validates exact paths and gold membership, rejects duplicate edges, and checks frozen replay, repeated forward scores, unchanged semantic scores, and agreement with uninstrumented inference. Frozen replay must apply gate tensors that are bit-identical to the saved native gates. CUDA sparse reductions can vary between otherwise identical bfloat16 passes, so score equality is evaluated using the measured repeat variation and an explicitly recorded dtype-and-score-scale allowance. Float32 retains the tight configured tolerance. Attribution repeat variation contributes to a separate numerical screening tolerance; neither tolerance is a confidence interval. Missing or failed cases stop the run. Resume only accepts matching manifests and intact gate archives. Old scan/interpretation JSON files never satisfy the new experiment cache.
 
-The historical on/off values flag reproduction differences for the frame setup only. For merged runs, they are labelled as reference values from a different checkpoint/graph, and are not treated as a numerical reproduction target. They are never substituted for fresh measurements.
+The historical on/off values flag reproduction differences for the affordance representation setup only. For merged runs, they are labelled as reference values from a different checkpoint/graph, and are not treated as a numerical reproduction target. They are never substituted for fresh measurements.
 
 ## Maintain and validate
 

@@ -26,8 +26,8 @@ from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S4 = os.path.dirname(HERE)
-CARGO = os.path.dirname(S4)
-DATA_ROOT = f"{CARGO}/retriever/data"
+REPO_ROOT = os.path.dirname(S4)
+DATA_ROOT = f"{REPO_ROOT}/retriever/data"
 FIELDS = ["cs", "biology", "physics", "matsci"]
 
 # Sibling repos the runners import from (edit here if they move).

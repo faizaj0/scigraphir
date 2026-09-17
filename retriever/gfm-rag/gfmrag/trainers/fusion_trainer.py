@@ -1,19 +1,19 @@
 """
-fusion_trainer.py — SFTTrainer for the CARGO fusion (FusionGraphReasoner / RoutedFusionReasoner).
+fusion_trainer.py — SFTTrainer for the SciGraphIR fusion (FusionGraphReasoner / RoutedFusionReasoner).
 
 Two objectives, selected by env FUSION_OBJECTIVE:
 
 - "bce_pcr" (default, legacy): the config losses (bce + pcr) act on the FUSED document scores, plus a
   small graph-alone ListCE aux (weight AUX_W). This is the run whose graph stayed inert (aux frozen at
-  ~log N): the operator already satisfies bce/pcr on the easy queries, so the GNN never gets a gradient.
+  ~log N): the handcrafted scorer already satisfies bce/pcr on the easy queries, so the GNN never gets a gradient.
 
 - "hardneg" (the report's Eq 3.9 objective): a softmax cross-entropy over a per-query lineup whose
-  negatives are the OPERATOR'S OWN top-ranked hubs — {gold} u operator-top-`HARDNEG_HUB` u `HARDNEG_RAND`
-  random docs. Ranking the gold above the docs the operator already loves can only be done with the graph,
-  so this is what actually teaches the graph to fix the operator's cross-domain misses. It is applied to
-  BOTH the fused score (trains gate/router + operator scalars + graph jointly) AND the graph-alone score
+  negatives are the HANDCRAFTED SCORER'S OWN top-ranked hubs — {gold} u handcrafted scorer-top-`HARDNEG_HUB` u `HARDNEG_RAND`
+  random docs. Ranking the gold above the docs the handcrafted scorer already loves can only be done with the graph,
+  so this is what actually teaches the graph to fix the handcrafted scorer's cross-domain misses. It is applied to
+  BOTH the fused score (trains gate/router + handcrafted scorer scalars + graph jointly) AND the graph-alone score
   (weight AUX_W — trains the GNN DIRECTLY, so it still learns even when the fusion is initialised
-  near-operator and the fused-path gradient into the graph is tiny).
+  near-handcrafted scorer and the fused-path gradient into the graph is tiny).
 
 LOSS V2 — three flag-gated, dissim-targeted edits to the hardneg objective.
 All default OFF, giving bit-identical legacy behavior:
@@ -22,16 +22,16 @@ All default OFF, giving bit-identical legacy behavior:
    soft-max: one easy gold satisfies the query and a buried dissim gold free-rides with
    ~zero gradient. Per-gold, EVERY gold must individually beat the lineup:
        L = sum_g w_g * [ logsumexp(negs u {g}) - s_g ] / sum_g w_g
-2. MISS_W_AUX=1 / MISS_W_FUSED=1 — miss-weighting: w_g = log1p(operator rank of gold g),
+2. MISS_W_AUX=1 / MISS_W_FUSED=1 — miss-weighting: w_g = log1p(handcrafted scorer rank of gold g),
    capped at MISS_W_CAP (default 8), normalised by the weight sum so the loss scale is
-   stable. Concentrates gradient on the golds the operator buries (68% of dissim golds
+   stable. Concentrates gradient on the golds the handcrafted scorer buries (68% of dissim golds
    sit past rank 100). Recommended always-on for the graph-alone aux (no gate/router in
    that path); on the FUSED term only under convex routing — with the per-query additive
    gate, amplifying the gradient of graph-noisy queries is what taught the gate backwards.
    With PER_GOLD=0 the pooled query term is weighted by its WORST-ranked gold.
 3. HARDNEG_GRAPH=K — graph-mined negatives: the graph-alone top-K (detached, golds
    removed) join the lineup, so the contrastive also pushes DOWN docs the graph
-   over-scores (PPR domain-hub flooding) instead of only pushing golds up past operator
+   over-scores (PPR domain-hub flooding) instead of only pushing golds up past handcrafted scorer
    hubs. Early in training the GNN is ~random so these are just extra random negatives;
    the term becomes self-adversarial as the graph learns.
 
@@ -62,9 +62,9 @@ class FusionSFTTrainer(SFTTrainer):
         self._aux_loss_fn = ListCELoss()
         self._aux_w = float(os.environ.get("AUX_W", "0.1"))
         self._objective = os.environ.get("FUSION_OBJECTIVE", "bce_pcr")
-        self._hn_hub = int(os.environ.get("HARDNEG_HUB", "50"))    # operator-top-K hubs per query
+        self._hn_hub = int(os.environ.get("HARDNEG_HUB", "50"))    # handcrafted scorer-top-K hubs per query
         self._hn_rand = int(os.environ.get("HARDNEG_RAND", "50"))  # random negatives per query
-        # Anchor weight for the learned semantic scorer's popularity predictor. Matches
+        # Anchor weight for the learned semantic scorer's background matchability predictor. Matches
         # --pop_lambda in semantic_scorer.py so the fusion continues training the model
         # under the objective it was selected under, not a different one.
         self._sem_pop_lambda = float(os.environ.get("SEM_POP_LAMBDA", "1.0"))
@@ -113,7 +113,7 @@ class FusionSFTTrainer(SFTTrainer):
         #
         # MEASURED PROBLEM. A zero-parameter random walk on these graphs scores 0.245/0.273
         # nDCG@5; the trained 6-layer GNN scores 0.213-0.273. The graph-alone contrastive
-        # asks the GNN to rank golds above operator hubs, which personalised PageRank from
+        # asks the GNN to rank golds above handcrafted scorer hubs, which personalised PageRank from
         # the same seeds largely does already, so the term is near-satisfied at init and the
         # surviving gradient points back at the structure the walk exploits. The learned
         # component is close to free-lunch topology.
@@ -238,13 +238,13 @@ class FusionSFTTrainer(SFTTrainer):
 
     def _contrastive_hardneg(self, doc_scores, target_doc, s_op, g_mine=None, miss_w=False,
                              lineups=None):
-        """Contrastive over {gold(s)} u operator-top-K hubs [u graph-top-K] u random negatives.
+        """Contrastive over {gold(s)} u handcrafted scorer-top-K hubs [u graph-top-K] u random negatives.
 
         doc_scores : [B, n_doc] scores to train (fused or graph-alone), require grad.
         target_doc : [B, n_doc] {0,1} gold mask over document nodes.
-        s_op       : [B, n_doc] operator scores (detached) — mines hard-negative hubs + miss weights.
+        s_op       : [B, n_doc] handcrafted scorer scores (detached) — mines hard-negative hubs + miss weights.
         g_mine     : [B, n_doc] graph-alone scores (DETACHED) — mines HARDNEG_GRAPH extra negatives.
-        miss_w     : weight each gold by log1p(its operator rank), capped at MISS_W_CAP.
+        miss_w     : weight each gold by log1p(its handcrafted scorer rank), capped at MISS_W_CAP.
         """
         B, n_doc = doc_scores.shape
         dev = doc_scores.device
@@ -259,7 +259,7 @@ class FusionSFTTrainer(SFTTrainer):
             neg = (lineups[b] if lineups is not None
                    else self.build_lineups(target_doc, s_op, g_mine)[b])
             neg_logits = doc_scores[b, neg]
-            # per-gold miss weights: how badly does the operator rank each gold?
+            # per-gold miss weights: how badly does the handcrafted scorer rank each gold?
             if miss_w:
                 ranks = (s_op[b].unsqueeze(0) > s_op[b, pos].unsqueeze(1)).sum(1).float() + 1.0
                 w = torch.log1p(ranks).clamp(max=self._miss_w_cap)
@@ -1115,10 +1115,10 @@ class FusionSFTTrainer(SFTTrainer):
         fused = pred[0, did].float()
         graph_raw = self.model._raw_doc[0].float()
         sem = self.model._s_op[0].float()
-        if getattr(self.model, "semantic", "mlp") == "operator":
-            # operator-scorer checkpoint (the July v1 fusion, e.g. TOMATO on the OpenIE graph): there is
+        if getattr(self.model, "semantic", "mlp") == 'handcrafted':
+            # handcrafted scorer-scorer checkpoint (the July v1 fusion, e.g. TOMATO on the OpenIE graph): there is
             # no multi-view table, the 'scorer' channel is S_op and the Qwen3 cosine comes from the
-            # operator components; callers get (None, None) instead of a views table.
+            # handcrafted scorer components; callers get (None, None) instead of a views table.
             tag, row = self.model._row[str(batch["id"][0])]
             dense = self.model._dense[tag][row].float().to(fused.device)
             return did, {"fused": fused, "graph": graph_raw, "scorer": sem, "dense": dense}, (None, None)
@@ -1396,28 +1396,28 @@ class FusionSFTTrainer(SFTTrainer):
                     out[t] = h
         return out
 
-    def interpret(self, qids, out_path, probes_path=None, num_beam=10, path_topk=5,
+    def interpret(self, qids, out_path, answers_path=None, num_beam=10, path_topk=5,
                   max_golds=2, top_views=3, do_paths=True, golds=None, necessity=False, distractor=False, dump_k=0):
         """Path interpretations, NBFNet-style, for the graph channel of the fusion model.
 
         For each requested query: the rank of every gold under each channel (fused, graph
         alone, multi-view scorer, raw Qwen3 cosine), the top-k paths from the query's seed
-        frames to its best-ranked gold (beam search over the gradient of the graph score
+        affordance representations to its best-ranked gold (beam search over the gradient of the graph score
         w.r.t. each layer's edge weights, exactly the GFM-RAG / NBFNet recipe), and along
         every path the CCMP responsibility of each hop's sender node at the layer it was
         used, normalised by that layer's frontier mean (i.e. the gate the model applied).
-        Also the scorer's views that matched the gold best, with their probe text.
+        Also the scorer's views that matched the gold best, with their hypothetical answer text.
         """
         import numpy as np
         self.model.eval()
         em = self.model.base.entity_model
         em.num_beam, em.path_topk = int(num_beam), int(path_topk)
         eta = float(getattr(em, "resp_eta", 0.5))
-        probes = {}
-        if probes_path and os.path.exists(probes_path):
-            for line in open(probes_path):
+        answers = {}
+        if answers_path and os.path.exists(answers_path):
+            for line in open(answers_path):
                 if line.strip():
-                    r = json.loads(line); probes[str(r["id"])] = r.get("probes", [])
+                    r = json.loads(line); answers[str(r["id"])] = r.get("answers", r.get("probes", []))
         want = [str(q) for q in qids]
         results = []
         for test_dataset in self.eval_graph_dataset_loader:
@@ -1457,7 +1457,7 @@ class FusionSFTTrainer(SFTTrainer):
                 if tab is not None:
                     Hq = np.asarray(tab["H"][row])[:, tab["col"]].astype(np.float32)   # [J, n_doc]
                     vmask = tab["mask"][row].numpy() > 0
-                else:                   # operator-scorer checkpoint: no hypothetical-answer views
+                else:                   # handcrafted scorer-scorer checkpoint: no hypothetical-answer views
                     Hq, vmask = None, None
                 seeds = batch["start_nodes_mask"][0].nonzero(as_tuple=True)[0].tolist()
                 # Structural floor for the hop-count figure: the fewest hops from ANY seed node to each
@@ -1475,7 +1475,7 @@ class FusionSFTTrainer(SFTTrainer):
                 for j in best:
                     gname = id2node[int(did[j])]
                     tv = [(int(a), float(Hq[a, j])) for a in np.argsort(-Hq[:, j]) if vmask[a]][:top_views] if Hq is not None else []
-                    views = [{"view": a, "match": m, "text": (probes.get(sid, [None] * (a + 1))[a] if a < len(probes.get(sid, [])) else None)}
+                    views = [{"view": a, "match": m, "text": (answers.get(sid, [None] * (a + 1))[a] if a < len(answers.get(sid, [])) else None)}
                              for a, m in tv]
                     if not do_paths:        # scan mode: ranks and views only, no gradient beam search
                         rec["targets"].append({"doc": gname, "rank": {k: ranks[k][gname] for k in ranks},
@@ -1590,7 +1590,7 @@ class FusionSFTTrainer(SFTTrainer):
         if self._objective == "hardneg":
             did = self.model._doc_ids
             # Whichever scorer the model's `semantic` setting selected: handcrafted
-            # operator or the learned sorted-MLP. Both contrastive terms below mine
+            # handcrafted scorer or the learned sorted-MLP. Both contrastive terms below mine
             # their negatives from it, so the graph is always trained to fix the misses
             # of the scorer actually in use.
             s_op = self.model._s_op                        # [B, n_doc] detached
@@ -1610,7 +1610,7 @@ class FusionSFTTrainer(SFTTrainer):
             # thing that differs between the fused and graph-alone losses is which score
             # is being trained -- which is the whole point of having both.
             lineups = self.build_lineups(tgt_doc, s_op, g_mine)
-            # (1) fused-score contrastive: trains gate/router + operator scalars + graph jointly
+            # (1) fused-score contrastive: trains gate/router + handcrafted scorer scalars + graph jointly
             l_fused = self._contrastive_hardneg(
                 pred[:, did], tgt_doc, s_op, g_mine=g_mine, miss_w=self._miss_w_fused,
                 lineups=lineups
@@ -1670,11 +1670,11 @@ class FusionSFTTrainer(SFTTrainer):
                 step_metrics["aux_graph"] = aux.item()
                 total = total + self._aux_w * aux
 
-        # POPULARITY ANCHOR, only under semantic='mlp'. The learned scorer's popularity
+        # background matchability ANCHOR, only under semantic='mlp'. The learned scorer's background matchability
         # term is a network, and the fusion's ranking gradient reaches it exactly as the
         # standalone run's did -- so it needs the same anchor, or p_hat stops meaning "how
         # generally matchable is this paper" and starts meaning "whatever lowers this loss".
-        # Zero for the operator channel, which has no predictor.
+        # Zero for the handcrafted scorer channel, which has no predictor.
         if self._sem_pop_lambda > 0 and hasattr(self.model, "semantic_aux_loss"):
             l_pop = self.model.semantic_aux_loss()
             if torch.is_tensor(l_pop):

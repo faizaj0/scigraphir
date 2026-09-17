@@ -1,6 +1,6 @@
 """
 build_showcase2_notebook.py -- "showcase 2": a short Colab notebook that runs path interpretations for a HAND-PICKED
-list of (query, gold) pairs under every arm (frame graph + CCMP, same weights with the gate off, no-CCMP control if
+list of (query, gold) pairs under every arm (SciAfford graph + CCMP, same weights with the gate off, no-CCMP control if
 it exists, OpenIE graph) with a wide beam, then draws the ladder figure (rank at every stage of the cumulative
 ablation, graph channel on/off) and the route figures (typed boxes, relation per hop, CCMP gate per hop, weight with
 and without the gate, OpenIE route for contrast). No corpus-wide scan, so it runs in ~20-30 minutes.
@@ -30,7 +30,7 @@ PICKS = {
         "10.48550_arxiv.2603.03985": ["10.1111/j.1749-6632.2010.05443.x", "10.1063/1.4822124"],    # real-time interaction -> memory reconsolidation (graph 2) / Ebbinghaus memristor
         "10.48550_arxiv.2602.00032": ["10.1007/s00146-022-01443-w"],                  # text-to-image bias -> word embeddings are biased (CCMP 6->4)
         "10.48550_arxiv.2602.07181": ["10.1037/0022-3514.89.3.449"],                  # personality traits as user model -> neuroticism / trait-consistent affect (all baselines >300)
-        "10.48550_arxiv.2602.22831": ["10.1038/s41586-018-0637-6"],                   # LLM moral triage -> The Moral Machine experiment (OpenIE direct mention; frame graph no bridge)
+        "10.48550_arxiv.2602.22831": ["10.1038/s41586-018-0637-6"],                   # LLM moral triage -> The Moral Machine experiment (OpenIE direct mention; SciAfford graph no bridge)
         "10.48550_arxiv.2602.13723": ["10.48550/arxiv.2502.05368"],                   # requirements-to-system -> Otter (graph 5, CCMP 11->9)
         "10.48550_arxiv.2603.08337": ['10.1017/cbo9780511804441'],                     # DeFi swap routing -> Convex Optimization (fused 8->6, graph 1575->44 with CCMP)
     },
@@ -73,8 +73,8 @@ def build(dataset: str) -> str:
                 "OUT2 = f\"{SCAN_OUT}/showcase2_{DATASET}\"\n"
                 "cmd = [sys.executable, \"-u\", \"eval/showcase2_figs.py\", \"--dataset\", DATASET, \"--dir\", SCAN_OUT, \"--pick\", PK_G,\n"
                 "       \"--queries\", QUERIES, \"--docs\", f\"{DATA_ROOT}/{DATASET}_test/raw/documents.json\", \"--out\", OUT2]\n"
-                "_qt = f\"{SCIGRAPHIR_ROOT}/benchmark/data.nosync/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
-                "if os.path.exists(_qt): cmd += [\"--quartet\", _qt]\n"
+                "_qt = f\"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
+                "if os.path.exists(_qt): cmd += [\"--sir4\", _qt]\n"
                 "for tag in (\"qwen3\", \"bge\", \"reasonir\", \"bm25\", \"specter2\", \"scincl\"):\n"
                 "    p_ = f\"{BASE}/predictions_{tag}_{DATASET}_test.json\"\n"
                 "    if os.path.exists(p_): cmd += [\"--pred\", f\"{tag}={p_}\"]\n"
@@ -99,8 +99,8 @@ def build(dataset: str) -> str:
                    "print(\"hops files:\", PFX + \"frame_ccmp*.json\", \"(corpus-wide showcase run)\" if PFX == \"hops_\" else \"(picked pairs only: few points)\")\n"
                    "OUTE = f\"{SCAN_OUT}/fig_ccmp_effect_{DATASET}\"\n"
                    "cmd = [sys.executable, \"-u\", \"eval/ccmp_effect_fig.py\", \"--dir\", SCAN_OUT, \"--prefix\", PFX, \"--docs\", f\"{DATA_ROOT}/{DATASET}_test/raw/documents.json\", \"--out\", OUTE]\n"
-                   "_qt = f\"{SCIGRAPHIR_ROOT}/benchmark/data.nosync/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
-                   "if os.path.exists(_qt): cmd += [\"--quartet\", _qt]\n"
+                   "_qt = f\"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
+                   "if os.path.exists(_qt): cmd += [\"--sir4\", _qt]\n"
                    "sh(cmd, S4)\n"
                    "from IPython.display import Image, display\n"
                    "display(Image(OUTE + \".png\")); print(json.dumps(json.load(open(OUTE + \"_summary.json\")), indent=1)[:3000])\n")
@@ -112,8 +112,8 @@ def build(dataset: str) -> str:
                 + embed("route_circles_tikz.py") + embed("route_table_tex.py") +
                 "PICKD = json.load(open(PK_G)); pairs = [f\"{q}={g}\" for q, gs in PICKD.items() for g in gs]\n"
                 "common = [\"--dataset\", DATASET, \"--dir\", SCAN_OUT, \"--prefix\", \"hops_pick_\", \"--docs\", f\"{DATA_ROOT}/{DATASET}_test/raw/documents.json\", \"--queries\", QUERIES]\n"
-                "_qt = f\"{SCIGRAPHIR_ROOT}/benchmark/data.nosync/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
-                "if os.path.exists(_qt): common += [\"--quartet\", _qt]\n"
+                "_qt = f\"{SCIGRAPHIR_ROOT}/sir-4/data/benchmark/{DATASET.replace('sir4_', '')}_test_final/eval.json\"\n"
+                "if os.path.exists(_qt): common += [\"--sir4\", _qt]\n"
                 "comp = [\"--compile\"] if shutil.which(\"tectonic\") else []\n"
                 "for i, pr in enumerate(pairs, 1):\n"
                 "    out = f\"{SCAN_OUT}/showcase2_{DATASET}_circles_{i}\"\n"
@@ -123,11 +123,11 @@ def build(dataset: str) -> str:
                 "sh([sys.executable, \"eval/route_table_tex.py\"] + common + sum(([\"--pair\", pr] for pr in pairs), []) + [\"--n-routes\", \"2\", \"--out\", tab] + comp, S4)\n"
                 "print(open(tab + \".tex\").read()[:4000])\n")
     header = md(f"# Showcase 2: hand-picked path interpretations, {dataset}\n\n"
-                "Runs the NBFNet-style gradient beam search from each query's seed frames to a hand-picked gold under every arm "
-                "(frame graph + CCMP, the same weights with the gate off, the no-CCMP control where a checkpoint exists, the OpenIE graph) "
+                "Runs the NBFNet-style gradient beam search from each query's seed nodes to a hand-picked gold under every arm "
+                '(SciAfford graph + CCMP, the same weights with the gate off, the no-CCMP control where a checkpoint exists, the OpenIE graph) '
                 "with a wide beam, then draws:\n\n"
                 "1. **the ladder**: the gold's rank at every stage of the cumulative ablation (Qwen3 cosine, multi-view scorer, + OpenIE graph, "
-                "+ SciAffordGraph with the gate off, + CCMP), with the graph channel alone (gate off / on) as hollow markers and the dense/lexical "
+                "+ SciAfford graph with the gate off, + CCMP), with the graph channel alone (gate off / on) as hollow markers and the dense/lexical "
                 "baselines as grey ticks: the difference the graph branch and CCMP make, per example;\n"
                 "2. **the routes**: for each pair the top interpreted route (typed boxes, relation per hop, CCMP gate per hop, weight with and "
                 "without the gate) with the OpenIE graph's route underneath for contrast.\n\n"

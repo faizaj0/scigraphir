@@ -9,8 +9,8 @@ slice as "plain BGE ranks this query's BEST gold below 100". Without this file
 there is no similar/dissimilar split at all, which is the axis the whole
 cross-domain argument rests on.
 
-The encoder is imported from operator_scorer.py rather than re-specified, so the
-baseline and the operator's dense term are the SAME vectors, same instruction,
+The encoder is imported from handcrafted_scorer.py rather than re-specified, so the
+baseline and the handcrafted scorer's dense term are the SAME vectors, same instruction,
 same cache. A baseline built with a slightly different encoder would make every
 delta unattributable.
 
@@ -32,9 +32,9 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CARGO = os.path.dirname(ROOT)
-KG = f"{CARGO}/retriever"
-sys.path.insert(0, CARGO)
+REPO_ROOT = os.path.dirname(ROOT)
+KG = f"{REPO_ROOT}/retriever"
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, KG)
 from scigraphir_paths import add_dataset_arg, banner, corpus_dir, set_dataset  # noqa: E402
 
@@ -42,9 +42,9 @@ from scigraphir_paths import add_dataset_arg, banner, corpus_dir, set_dataset  #
 DEFAULT_MODEL = "BAAI/bge-large-en-v1.5"
 
 # Imported rather than restated. This used to be a second copy of the string,
-# which meant swapping the instruction in operator_scorer.py left the dense
+# which meant swapping the instruction in handcrafted_scorer.py left the dense
 # baseline on the old one and the two silently disagreed.
-QWEN_QI = None          # resolved from operator_scorer in main(); see op.QWEN_QI
+QWEN_QI = None          # resolved from handcrafted_scorer in main(); see op.QWEN_QI
 
 
 def model_slug(name: str) -> str:
@@ -55,7 +55,7 @@ def model_slug(name: str) -> str:
     model. Running --model Qwen/... therefore loaded BGE's cached .npy and
     reported it as Qwen3: a silent contamination of exactly the kind that has
     already cost this project a day. Empty for the default keeps the existing
-    cache hits (and the shared-encoder guarantee with operator_scorer) intact.
+    cache hits (and the shared-encoder guarantee with handcrafted_scorer) intact.
     """
     if name == DEFAULT_MODEL:
         return ""
@@ -63,10 +63,10 @@ def model_slug(name: str) -> str:
     return "_" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def load_operator_module():
-    """Import operator_scorer.py for cached_encode + BGE_QI, so the baseline and
-    the operator's dense term are literally the same encoder and cache."""
-    spec = importlib.util.spec_from_file_location("op", f"{KG}/eval/operator_scorer.py")
+def load_handcrafted_module():
+    """Import handcrafted_scorer.py for cached_encode + BGE_QI, so the baseline and
+    the handcrafted scorer's dense term are literally the same encoder and cache."""
+    spec = importlib.util.spec_from_file_location("op", f"{KG}/eval/handcrafted_scorer.py")
     op = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(op)
     return op
@@ -89,7 +89,7 @@ def main() -> int:
         print("--topk below 100 makes the dissimilar slice undefined", file=sys.stderr)
         return 2
 
-    op = load_operator_module()
+    op = load_handcrafted_module()
     from sentence_transformers import SentenceTransformer
 
     corpus = json.load(open(f"{corpus_dir(a.split)}/raw/documents.json"))
@@ -104,10 +104,10 @@ def main() -> int:
     model = SentenceTransformer(a.model, device=dev)
     model.max_seq_length = 512
 
-    # Same tags operator_scorer.py uses, so whatever it already encoded is reused
+    # Same tags handcrafted_scorer.py uses, so whatever it already encoded is reused
     # rather than recomputed with a different seed of the same model.
     slug = model_slug(a.model)
-    qi = op.query_instruction(a.model)      # one definition, shared with the operator
+    qi = op.query_instruction(a.model)      # one definition, shared with the handcrafted scorer
     print(f"encoder {a.model}  cache tag suffix {slug!r}  instruct {qi[:40]!r}...")
     D = op.cached_encode(model, [corpus[d] for d in doc_ids],
                          f"{a.split}_doc{slug}").astype(np.float32)

@@ -13,8 +13,7 @@ scorer printed.
 
 Usage
 -----
-    python3 eval/table91_row.py --name "Operator + OpenIE graph (v1, ep20)" \
-                                --scores results/v1_fusion_openie/scores.json
+    python3 eval/table91_row.py --name "Handcrafted scorer + OpenIE graph (v1, ep20)"                                 --scores results/v1_fusion_openie/scores.json
     python3 eval/table91_row.py --name A --scores a.json --name B --scores b.json
 """
 from __future__ import annotations

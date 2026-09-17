@@ -1,5 +1,10 @@
 # Runbook: MIR (Methodology Inspiration Retrieval) through the pipeline
 
+The current default SciAfford graph combines affordance structure, OpenIE entity context
+and paper-to-affordance links, using the `_hyb` suffix. This runbook also records earlier
+`_v16sc` and OpenIE-only experiments. Their graph paths identify those recorded runs;
+use the [graph guide](../sciafford/README.md) for the default construction.
+
 Dataset name is `mir`. Every command takes `--dataset mir`; check the
 `[scigraphir_paths] dataset=mir` banner on each. The staged layout (done):
 
@@ -17,16 +22,16 @@ plus dev/test citations, so 4,678 documents are shared between the two splits.
 cd $SCIGRAPHIR_ROOT && python3 experiments/prep/stage_mir.py
 ```
 
-## 1. Frames  (PAID; about $2-3 total at CS's rate of ~$0.4 per 1,000 documents)
+## 1. Affordance representations  (PAID; about $2-3 total at CS's rate of ~$0.4 per 1,000 documents)
 
 Train side first:
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_frames.py --dataset mir --side doc --split train --workers 128
+cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_affordances.py --dataset mir --side doc --split train --workers 128
 ```
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_frames.py --dataset mir --side query --split train --workers 128
+cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_affordances.py --dataset mir --side query --split train --workers 128
 ```
 
 **Seed the test document cache from the train one before extracting test documents.**
@@ -40,32 +45,32 @@ cd $SCIGRAPHIR_ROOT/sciafford && cp cache/mir/frames_doc_train.jsonl cache/mir/f
 Then the test side picks up only the ~180 documents not in train:
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_frames.py --dataset mir --side doc --split test --workers 128
+cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_affordances.py --dataset mir --side doc --split test --workers 128
 ```
 
 ```bash
-cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_frames.py --dataset mir --side query --split test --workers 128
+cd $SCIGRAPHIR_ROOT/sciafford && python3 extract_affordances.py --dataset mir --side query --split test --workers 128
 ```
 
-Check counts: doc frames should be 4,678 (train) and 4,857 (test); query frames 1,270 and 155.
+Check counts: doc affordance representations should be 4,678 (train) and 4,857 (test); problem requirement representations 1,270 and 155.
 
 ```bash
 wc -l $SCIGRAPHIR_ROOT/sciafford/cache/mir/*.jsonl
 ```
 
-## 2. Probes  (PAID, small)
+## 2. hypothetical answers  (PAID, small)
 
 ```bash
-cd $SCIGRAPHIR_ROOT/retriever && python3 probes/gen_probes.py --dataset mir --split train --workers 128
+cd $SCIGRAPHIR_ROOT/retriever && python3 hypothetical_answers/generate_answers.py --dataset mir --split train --workers 128
 ```
 
 ```bash
-cd $SCIGRAPHIR_ROOT/retriever && python3 probes/gen_probes.py --dataset mir --split test --workers 128
+cd $SCIGRAPHIR_ROOT/retriever && python3 hypothetical_answers/generate_answers.py --dataset mir --split test --workers 128
 ```
 
 ## 3. Graphs  (free, minutes at this size)
 
-Same settings as SIR-4: canonicalisation threshold 0.95, no entity or probe seeds.
+Same settings as SIR-4: canonicalisation threshold 0.95, no entity or hypothetical answer seeds.
 
 ```bash
 cd $SCIGRAPHIR_ROOT/sciafford && for s in test train; do python3 build_greasoner_dataset.py --dataset mir --split $s --tau_canon 0.95 --no_entity_seeds --no_probe_seeds; done
@@ -94,7 +99,7 @@ Upload `experiments/mir_bundle.zip` to `MyDrive/cargo-gfmrag/`.
 
 The MIR notebook (built by `prep/build_mir_notebook.py`) runs the six baselines, the
 multi-view scorer, and the cumulative ablation (scorer, + graph reasoner, + CCMP), then
-prints the Table 9.1-style table with R@3, R@5, nDCG@5 and mAP. Training is minutes to an
+prints the main retrieval table with R@3, R@5, nDCG@5 and mAP. Training is minutes to an
 hour per arm at this corpus size.
 
 ## Caption facts
@@ -229,17 +234,17 @@ the notebook must carry `interpret()`, i.e. built on/after 6 Sep), then ranks ev
 every test query under each arm with no path search and prints the table per stratum
 (same / cross / all). Output: `outputs/scan/<dataset>/graph_channel_scan_<dataset>.{md,json}`.
 
-Arms (skipped when the checkpoint is missing): frame graph + CCMP, the same weights with the
-CCMP gate off, frame graph no-CCMP control, OpenIE graph. TOMATO has no current-engine OpenIE
+Arms (skipped when the checkpoint is missing): SciAfford graph + CCMP, the same weights with the
+CCMP gate off, SciAfford graph no-CCMP control, OpenIE graph. TOMATO has no current-engine OpenIE
 checkpoint, so it gets three arms. Do not run this cell in a kernel where another replay cell
 (e.g. `colab_rb_mir_arm_cell.py`) has run: each replay rewrites `/content/gfm-rag`'s fusion
 sources with its own notebook's blob, and the RB blob lacks `interpret()`.
 
 `colab_mir_scan_cell.py` is the MIR-only predecessor (same output layout).
 
-## 9c-bis. TOMATO OpenIE arm (needed for the frame-vs-OpenIE comparison on TOMATO)
+## 9c-bis. TOMATO OpenIE arm (needed for the affordance representation-vs-OpenIE comparison on TOMATO)
 
-The only OpenIE-graph weights on Drive for TOMATO are the July v1 run (BGE operator, old
+The only OpenIE-graph weights on Drive for TOMATO are the July v1 run (BGE handcrafted scorer, old
 engine, no scorer), so the scan/showcase cells skip the OpenIE arm on TOMATO. To add it:
 `python3 prep/build_sir4_openie_notebook.py --dataset tomato` -> `colab_tomato_openie_ablation.ipynb`
 (same recipe as the SIR-4 OpenIE row: multi-view scorer warm start from
@@ -276,17 +281,17 @@ the old engine and rerun the path stage. Rebuild after any engine change:
 `python3 prep/build_showcase_cell.py && python3 prep/build_showcase_notebook.py && python3 prep/build_showcase_all_notebook.py`
 (prep/overlay_cell.py reads experiments/gfm_overlay.zip; regenerate that zip from retriever/gfm-rag first).
 
-## 9c-ter. Merged graph on TOMATO (frame + entity seeds + mention edges + mechanism shortcuts)
+## 9c-ter. Merged graph on TOMATO (affordance representation + entity seeds + mention edges + mechanism shortcuts)
 
 Built locally by `python3 prep/build_hybrid_graph.py --dataset tomato` (cap 30, seed entities only):
 `retriever/data/tomato_{train,test}_hyb/`, zipped as `tomato_hyb_bundle.zip` (31 MB). Walk
-prior on the test graph 21.7 / cross 17.0 vs 14.4 / 10.4 on the frame graph. Upload the zip to
+prior on the test graph 21.7 / cross 17.0 vs 14.4 / 10.4 on the SciAfford graph. Upload the zip to
 `MyDrive/cargo-gfmrag/` next to `tomato_bundle.zip`, then run `colab_routing_tomato_hyb.ipynb`
 (built by `build_routing_notebook.py --dataset tomato --graph-suffix hyb --extra-bundle tomato_hyb_bundle.zip
 --arms control,ccmp`): two arms, no CCMP and CCMP, 10 epochs, batch 2, ~15-18 h each on an A100
 (local training, 10-min Drive sync, resumes). Writes `outputs/routing_hyb/tomato/tomato_hyb_route_{control,ccmp}_e10_b2_s1024/`.
 The scan / showcase cells and notebooks then add the rows `merged graph, no CCMP`, `merged graph + CCMP`
-and `merged graph, gate off`, with gold-by-gold win rates against the frame and OpenIE arms.
+and `merged graph, gate off`, with gold-by-gold win rates against the affordance representation and OpenIE arms.
 
 ## 9d. Showcase: "amazing" cross-domain examples + hop figure
 
@@ -295,13 +300,13 @@ Edit `DATASETS` in cell 1 (default: the four SIR-4 fields, TOMATO, MIR), run top
 A100. Setup happens once (all bundles unpacked side by side, Qwen3, engine, fusion sources with
 `interpret()`); cell 5 loops over the datasets and runs, per dataset:
 
-- the graph-channel scan of every gold under every arm (frame + CCMP, gate off, no-CCMP control,
+- the graph-channel scan of every gold under every arm (affordance representation + CCMP, gate off, no-CCMP control,
   OpenIE; missing checkpoints are skipped) -> `outputs/scan/<dataset>/graph_channel_scan_<dataset>.md`;
 - path interpretations (gradient beam search, NBFNet / GFM-RAG recipe) for every gold of every
   cross-field query plus 120 same-field queries -> `hops_<arm>.json`;
 - `eval/showcase.py` -> `showcase_<dataset>.md` (candidates ranked for a reader: cosine rank >= 25 and
   graph <= 5 or fused <= 25; tier A = full model top-10, B = graph top-5 only, C = rest; route
-  "bridge" = passes a function / limitation / method / finding frame, "hub" = only papers and a
+  "bridge" = passes a function / limitation / method / finding affordance representation, "hub" = only papers and a
   domain node), `showcase_<dataset>.tex` (GFM-RAG Table 4 layout), `showcase_<dataset>_hops.{pdf,png,json}`
   (Fig. 6 analogue: top-path length per arm against the shortest seed->gold route, a structural
   FLOOR, not a ground-truth reasoning path; say so in the caption).
@@ -309,13 +314,13 @@ A100. Setup happens once (all bundles unpacked side by side, Qwen3, engine, fusi
 Cell 6 draws `outputs/scan/fig_hops_all.pdf`, one panel per dataset. Everything is cached on
 Drive, so re-running after a new checkpoint (e.g. the TOMATO OpenIE arm, 9c-bis) only adds rows.
 Per-dataset variants: `colab_showcase_<dataset>.ipynb` (build_showcase_notebook.py) and the
-paste-in `colab_showcase_cell.py`. Locally, `--quartet ../benchmark/data/benchmark/<field>_test_final/eval.json`
-adds the QUARTET field pair per gold and the gold-level stratum.
+paste-in `colab_showcase_cell.py`. Locally, `--sir4 ../sir-4/data/benchmark/<field>_test_final/eval.json`
+adds the SIR-4 field pair per gold and the gold-level stratum.
 
 ## 10. G-Reasoner + GFM-RAG on MIR  (GPU, ~1 h each)
 
 One notebook, the SIR-4 all-domains plumbing over `mir`. G-Reasoner trains on the
-`mir_*_v16sc` frame graphs and runs today; GFM-RAG is gated on the OpenIE graph from
+`mir_*_v16sc` affordance representation graphs and runs today; GFM-RAG is gated on the OpenIE graph from
 section 9 and opens by itself once the re-bundled zip is on Drive. Sections 1-4 re-run the
 six dense arms into `outputs/baselines/mir/` (about 15 min; the MIR fusion notebook keeps
 its own copies elsewhere, both are fine).
@@ -330,11 +335,11 @@ it is the SIR-4 layout, not a failure.
 
 ## 12. Zero-shot transfer to MIR  (GPU, ~20 min, free)
 
-Table 9.3 on MIR: the TOMATO-Star-trained and the SIR-4 four-field SciGraphIR checkpoints,
+Zero-shot transfer on MIR: the TOMATO-Star-trained and the SIR-4 four-field SciGraphIR checkpoints,
 frozen, rank MIR's test corpus. No training. Needs only what is already on Drive: the two
 checkpoints with their scorer warm starts (`outputs/tomato_ablations_v1/tomato/...`,
 `outputs/rb_zeroshot/...`), the current `mir_bundle.zip`, and the in-benchmark run's caches
-under `outputs/mir/cache`. Uses the frame graph `mir_test_v16sc`, never the OpenIE graph.
+under `outputs/mir/cache`. Uses the SciAfford graph `mir_test_v16sc`, never the OpenIE graph.
 
 ```bash
 cd $SCIGRAPHIR_ROOT/experiments && python3 prep/build_mir_zeroshot_notebook.py
@@ -345,7 +350,7 @@ Upload and run `experiments/notebooks/colab_mir_zeroshot.ipynb`. Outputs land in
 `table_mir_zeroshot.{md,tex}` with the six baselines and the MIR-trained SciGraphIR row read
 from `outputs/mir/scores` for contrast. Read the `all` slice (single field). Caption facts:
 neither source ever saw MIR; the SIR-4 source's scorer was warm-started on CS alone and the
-reasoner trained jointly on four fields, as in Table 9.3.
+reasoner trained jointly on four fields, as in the zero-shot transfer experiment.
 
 ## 11. SciGraphIR on the OpenIE graph  (GPU, ~1 h)
 

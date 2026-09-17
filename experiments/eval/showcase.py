@@ -3,11 +3,11 @@
 showcase.py -- find the worked examples that show cross-domain reasoning, and draw the hop figure.
 
 Reads interpret_paths.py outputs with paths (one file per arm; the FIRST --arm is the model being
-showcased, normally the frame graph + CCMP) and produces, for one dataset:
+showcased, normally the SciAfford graph + CCMP) and produces, for one dataset:
 
   <out>.md               candidates ranked for a reader: cross-field golds the dense retrievers bury
                          that the full model ranks at the top, with a readable multi-hop route through
-                         a mechanism frame (function / limitation / method), not a domain hub. Per
+                         a mechanism affordance representation (function / limitation / method), not a domain hub. Per
                          candidate: the query, the gold and its field, every rank, the top routes on
                          every graph with the CCMP gate per hop.
   <out>.tex              the top --n-tex candidates in the GFM-RAG Table 4 layout (query / inspiration /
@@ -25,9 +25,9 @@ showcased, normally the frame graph + CCMP) and produces, for one dataset:
 usage (one dataset):
   showcase.py --dataset sir4_cs --queries raw/test.json --docs raw/documents.json \\
       --edges processed/stage1/edges.csv \\
-      --arm "SciGraphIR (frame graph + CCMP)=hops_frame_ccmp.json" \\
-      --arm "frame graph, CCMP gate off=hops_frame_ccmp_off.json" --arm "OpenIE graph=hops_openie.json" \\
-      [--pred qwen3=predictions_qwen3_sir4_cs_test.json --pred bge=...] [--quartet eval.json] \\
+      --arm "SciGraphIR (SciAfford graph + CCMP)=hops_frame_ccmp.json" \\
+      --arm "SciAfford graph, CCMP gate off=hops_frame_ccmp_off.json" --arm "OpenIE graph=hops_openie.json" \\
+      [--pred qwen3=predictions_qwen3_sir4_cs_test.json --pred bge=...] [--sir4 eval.json] \\
       --out results/qualitative/showcase_sir4_cs --top 30 --n-tex 4
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ import statistics as st
 from collections import Counter, defaultdict
 
 BIG = 10 ** 6
-MECH = ("function", "limitation", "method", "finding")     # frame types that carry a mechanism
+MECH = ("function", "limitation", "method", "finding")     # affordance representation types that carry a mechanism
 SYS_LABEL = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Emb.", "specter2": "SPECTER2", "scincl": "SciNCL",
              "reasonir": "ReasonIR-8B", "dense": "Qwen3 cosine", "scorer": "multi-view scorer", "graph": "graph channel",
              "fused": "SciGraphIR"}
@@ -129,7 +129,7 @@ def load_arm(path: str) -> dict:
 
 
 def doc_domains(edges_csv: str | None) -> dict:
-    """document id -> '[domain] ...' node names from the frame graph's in_field edges."""
+    """document id -> '[domain] ...' node names from the SciAfford graph's in_field edges."""
     dom = defaultdict(list)
     if not edges_csv or not os.path.exists(edges_csv):
         return dom
@@ -141,8 +141,8 @@ def doc_domains(edges_csv: str | None) -> dict:
     return dom
 
 
-def quartet_fields(path: str | None) -> dict:
-    """(qid, gold) -> 'Computer Science -> Engineering' from the QUARTET export, when available."""
+def sir4_fields(path: str | None) -> dict:
+    """(qid, gold) -> 'Computer Science -> Engineering' from the SIR-4 export, when available."""
     out = {}
     if not path or not os.path.exists(path):
         return out
@@ -154,7 +154,7 @@ def quartet_fields(path: str | None) -> dict:
 
 
 def route_kind(p: dict | None, docs: dict) -> str:
-    """bridge = passes a mechanism frame; hub = only papers/domain/task/entity nodes; none = no valid path."""
+    """bridge = passes a mechanism affordance representation; hub = only papers/domain/task/entity nodes; none = no valid path."""
     if not p:
         return "none"
     inner = [ntype(h["head"], docs) for h in p["hops"][1:]] + [ntype(p["hops"][0]["head"], docs)]
@@ -260,7 +260,7 @@ def main() -> int:
     ap.add_argument("--queries"); ap.add_argument("--docs"); ap.add_argument("--edges", default=None)
     ap.add_argument("--arm", action="append", default=[], help="label=hops json; the first is the showcased model")
     ap.add_argument("--pred", action="append", default=[], help="name=predictions json of a baseline (rank of the gold)")
-    ap.add_argument("--quartet", default=None, help="QUARTET eval.json for the field pair of each gold (SIR-4 only)")
+    ap.add_argument("--sir4", "--quartet", dest='sir4', default=None, help="SIR-4 eval.json for the field pair of each gold (SIR-4 only)")
     ap.add_argument("--stratum", default="auto", help="cross | same | any | auto (cross when the dataset has it)")
     ap.add_argument("--max-fused", type=int, default=25); ap.add_argument("--max-graph", type=int, default=5)
     ap.add_argument("--min-dense", type=int, default=25, help="the gold must be at least this deep under raw cosine")
@@ -298,14 +298,14 @@ def main() -> int:
         if os.path.exists(path):
             preds[nm] = {r["id"]: ranked_docs(r) for r in json.load(open(path))}
     dom = doc_domains(a.edges)
-    qf = quartet_fields(a.quartet)
+    qf = sir4_fields(a.sir4)
     strata_present = {t["stratum"] for t in main_tab.values()}
     stratum = a.stratum if a.stratum != "auto" else ("cross" if "cross" in strata_present else "any")
 
     # ---- candidates ------------------------------------------------------------------------------
     cands = []
     for (qid, gold), t in main_tab.items():
-        # a "cross" query can carry same-field golds too; use the gold's own label when QUARTET has it
+        # a "cross" query can carry same-field golds too; use the gold's own label when SIR-4 has it
         g_strat = (qf.get((qid, gold)) or {}).get("stratum") or t["stratum"]
         if stratum != "any" and g_strat != stratum:
             continue
@@ -350,7 +350,7 @@ def main() -> int:
           f"(graph <= {a.max_graph} or fused <= {a.max_fused}); tier A = model top-10, B = graph top-5 only, C = rest)", "",
           f"{len(main_tab)} golds with interpretations under '{main_lab}'; {len(cands)} pass the filter; "
           f"routes: {Counter(r['route'] for r in cands)}", "",
-          "Read the top rows first. 'bridge' = the top route passes a function / limitation / method / finding frame; "
+          "Read the top rows first. 'bridge' = the top route passes a function / limitation / method / finding affordance representation; "
           "'hub' = it only passes papers and a domain node (the failure signature); gates > 1 are hops CCMP amplified.", ""]
     # the extra columns (other arms, then baselines) are built as one list: with no baseline predictions
     # on disk, joining two groups with " | " left a stray empty column and a malformed markdown table
@@ -425,7 +425,7 @@ def main() -> int:
         tex[-1] = tex[-1][: -len("\n\\midrule")]
     tex.append("\\bottomrule\n\\end{tabular}")
     tex.append(f"\\caption{{Path interpretations on {tex_escape(a.dataset)}: cross-field queries whose gold inspiration the dense "
-               "retrievers bury and SciGraphIR ranks at the top. Paths are the highest-weighted routes from a query seed frame to "
+               'retrievers bury and SciGraphIR ranks at the top. Paths are the highest-weighted routes from a query seed node to '
                "the gold under each graph (gradient beam search over per-layer edge weights, as in NBFNet and GFM-RAG); numbers in "
                "parentheses are the CCMP gate on each hop's sender (1 = frontier mean; $>$1 amplified). Ranks are the position of "
                "the gold under each channel and system.}")

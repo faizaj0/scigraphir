@@ -40,8 +40,8 @@ from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)                                  # experiments/
-CARGO = os.path.dirname(ROOT)                                 # $SCIGRAPHIR_ROOT
-sys.path.insert(0, CARGO)
+REPO_ROOT = os.path.dirname(ROOT)                                 # $SCIGRAPHIR_ROOT
+sys.path.insert(0, REPO_ROOT)
 from scigraphir_paths import banner, corpus_dir, set_dataset       # noqa: E402
 
 

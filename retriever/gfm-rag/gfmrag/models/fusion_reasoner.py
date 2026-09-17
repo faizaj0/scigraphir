@@ -1,77 +1,32 @@
 """
-fusion_reasoner.py — CARGO fusion: v16sc G-Reasoner + operator, EVERYTHING learned jointly in one run.
+SciGraphIR semantic and graph fusion, with optional CCMP.
 
-Wraps the standard GraphReasoner. The operator is recomputed LIVE from its raw ingredients so its
-weights and exponent are trainable (matches the interim report: beta and the fusion weights are learned):
+The thesis configuration selects `semantic=mlp` and enables Contrastive
+Continuation Message Passing (CCMP). The semantic branch uses the document MLP
+to predict background matchability for PMI-style specificity correction and the
+ranking MLP to score the sorted hypothetical-answer similarity profile. CCMP
+predicts node responsibilities from contrastive continuation targets and gates
+outgoing messages. Its supervision is implemented in fusion_trainer.py.
 
-    S_op      = w0 z(dense) + w1 z(S / dem^beta) + w2 z(M / dem^beta)   # dem = total_S - S (anti-hub)
-    fused_doc = z(S_op) + gamma_q * relu( z(graph_doc) )
-    gamma_q   = softplus( gate(coverage) )                             # per-query gate >= 0
+A query-adaptive fusion router combines the two standardised scores:
+    fused_doc = z(semantic_doc) + gamma_q * relu(z(graph_doc))
+The text encoder is frozen; trainable graph, semantic and router parameters
+depend on the selected configuration. SEMANTIC_CKPT and SEMANTIC_POPNET provide
+the learned scorer and document predictor for warm starts.
 
-TWO FUSION FORMS, selected by FUSION_FORM (default 'additive' = the arithmetic above,
-bit-identical to every run made before the option existed).
+The constructor retains `semantic=handcrafted` as its compatibility default. This
+is the earlier handcrafted sum/max scorer, with leave-one-out background
+matchability estimated from the other queries in the split. The learned scorer
+can instead score one query against an unseen corpus.
 
-    FUSION_FORM=mixture   fused_doc = log( (1 - a_q) p_s + a_q p_g )
-                          p_s = softmax( z(S_op) )            # tau_s fixed at 1
-                          p_g = softmax( z(graph_doc)/tau_g ) # tau_g learned in [0.25, 4]
-                          a_q = a_max * sigmoid( router(phi_q) )
+FUSION_FORM=mixture, CQIG, and A*Net-style/RED-GNN-style routing are comparison
+variants. They are separate from the thesis configuration described above.
 
-The additive form cannot promote a document, at any gamma it actually learns: a z-score
-over this corpus tops out near 5-10 and the converged gamma is 0.036, so the graph's
-largest possible contribution to any document is ~0.36 z-units against a semantic top-50
-spread of 1-3. It can reorder neighbours, never rescue a gold the semantic scorer missed,
-which is exactly the cross-domain case. Mixing calibrated DISTRIBUTIONS instead of scores
-makes the response exponential, so the graph's few confident documents can move hundreds
-of places, while a flat p_g leaves the ranking exactly unchanged rather than adding noise
-to every document. The cost is that the graph's confident MISTAKES are promoted just as
-hard, and the graph ranking is substantially weaker overall, so a concentrated p_g puts
-large mass on wrong documents on many queries; a_max bounds that. Full detail, including
-why tau_s is frozen and why tau_g is bounded rather than free, in __init__.
-
-Trained end-to-end from one ranking loss on fused_doc:
-  - the GNN weights (the v16sc graph reasoner, from scratch),
-  - the gate (when to trust the graph), and
-  - the operator scalars w=[w0,w1,w2] and beta.
-The BGE encoder that produced dense/S/M is frozen (we only learn the handful of combination scalars).
-w, beta are warm-started at the fitted values and learn at the base LR (op_lr_scale=1.0) — 4 params on
-a near-convex objective, so they converge fast. relu => the graph can only promote a doc (aggregate floor).
-
-Ingredients come from env OPERATOR_COMPONENTS (train) / OPERATOR_COMPONENTS_TEST (test): npz with
-{dense,S,M: float16 [Q x n_doc] in nodes.csv doc order, total_S: float32 [n_doc], query_ids:[...]}.
-Query ids are split-unique, so both tables are merged and looked up by batch['id'].
-
-MULTI-CORPUS TRAINING. Either variable also accepts a COMMA-SEPARATED list of npz
-paths, which is what joint Physics+Biology training needs: the trainer walks a list
-of graphs and each carries its own corpus, so `dense` has a different document-column
-count per graph (physics 10,349 vs biology 15,588) and one merged table cannot serve
-both. Each file becomes its own table, and because query ids are unique across SIR-4
-datasets the existing id -> (tag, row) lookup already routes a batch to the right one.
-GraphDatasetLoader keeps one graph resident at a time, so a batch never spans two
-corpora and the single-tag assert in _operator still holds.
-
-THE SEMANTIC CHANNEL IS SELECTABLE (`semantic:` in the config).
-
-  "operator" (default)  the handcrafted scorer above. Unchanged, bit-identical.
-  "mlp"                 the LEARNED scorer from semantic_scorer.py: one MLP reading the
-                        SORTED vector of per-answer match scores, with a popularity
-                        discount predicted from the document embedding alone.
-
-Only the semantic channel changes. The gate, the relu floor, the fusion arithmetic and the
-hard-negative mining are identical either way, so a run pair isolates "handcrafted vs learned
-semantic scorer" with the graph half held fixed. The learned scorer is warm-started from a
-trained 5d checkpoint (SEMANTIC_CKPT + SEMANTIC_POPNET) and keeps training under the fusion's
-ranking loss unless semantic_train=False.
-
-WHY THE POPULARITY PREDICTOR AND NOT THE LEAVE-ONE-OUT TERM. The operator's anti-hub
-denominator is total_S - S, i.e. a document's popularity measured from the OTHER queries'
-hypothetical answers in the same split. Inside the fusion that is the same transductive
-dependency it has always been. The learned scorer replaces it with a function of the
-document's own embedding, so the fused model can score one query against an unseen corpus.
-
-Ingredients come from env SEMANTIC_COMPONENTS / SEMANTIC_COMPONENTS_TEST (see
-precompute_semantic_components.py). The per-answer matrix H is NOT copied into those files:
-they carry the memmap's path plus the corpus->nodes.csv column permutation, and the rows for
-one batch are sliced and permuted on demand.
+HANDCRAFTED_COMPONENTS[_TEST] supplies the handcrafted branch's dense/S/M arrays.
+SEMANTIC_COMPONENTS[_TEST] supplies the learned branch's input manifests,
+including the per-answer memmap path and document-column permutation. These
+variables also accept comma-separated paths for multi-corpus training. Existing
+configuration names and state-dict keys are preserved for saved artifacts.
 """
 import json
 import math
@@ -84,23 +39,24 @@ import torch.nn.functional as F  # noqa: N812
 
 from gfmrag.models.gfm_reasoner import GraphReasoner
 
-W_INIT = (1.05, 1.05, 0.25)   # fitted operator fusion weights
-BETA_INIT = 0.95              # fitted anti-hub exponent
+W_INIT = (1.05, 1.05, 0.25)   # fitted handcrafted scorer fusion weights
+BETA_INIT = 0.95              # fitted specificity correction exponent
 
 
 class FusionGraphReasoner(nn.Module):
     def __init__(self, entity_model, feat_dim, gamma_init=0.5, gate_hidden=8,
-                 op_lr_scale=1.0, semantic="operator", semantic_train=True,
+                 op_lr_scale=1.0, semantic='handcrafted', semantic_train=True,
                  cqig=False, cqig_lam=0.1, cqig_layers=None, cqig_norm=None,
                  cqig_rho=1e-3, cqig_grad_I=None, cqig_op=None, cqig_mu=None, **kwargs):
-        # The operator was first proposed as `cqig_mode`. Accepted as an alias rather than
+        # The CQIG message operator was first configured as `cqig_mode`. Accepted as an alias rather than
         # left to fall through **kwargs into GraphReasoner, where it would be a silent
-        # no-op and the arm would train as the default operator under the other one's name.
+        # no-op and the arm would train as the default message operator under the other one's name.
         if "cqig_mode" in kwargs:
             cqig_op = kwargs.pop("cqig_mode") if cqig_op is None else cqig_op
         super().__init__()
         self.base = GraphReasoner(entity_model, feat_dim, **kwargs)
-        assert semantic in ("operator", "mlp"), f"unknown semantic channel {semantic!r}"
+        semantic = {"operator": "handcrafted"}.get(semantic, semantic)
+        assert semantic in ('handcrafted', "mlp"), f"unknown semantic channel {semantic!r}"
         self.semantic = semantic
 
         # --- Cross-Query Informativeness Gating (off by default, see cqig.py) ---
@@ -136,7 +92,7 @@ class FusionGraphReasoner(nn.Module):
         if _ccmp_on or _route == "astar":
             # RNG STATE SAVED AND RESTORED AROUND THIS BLOCK. Constructing these modules
             # draws from the global generator, so every parameter initialised AFTER this
-            # point -- the fusion gate, the router, the operator scalars -- would start
+            # point -- the fusion gate, the router, the handcrafted scorer scalars -- would start
             # from different values in the CCMP arm than in the control. The pair would
             # then differ in the loss AND in the initialisation, and the control's own
             # reruns already move 0.0118 nDCG@5.
@@ -218,7 +174,7 @@ class FusionGraphReasoner(nn.Module):
                       "score, the bank was never load-bearing.")
             if self.cqig.mu_zero and self.cqig.centring:
                 raise AssertionError(
-                    "cqig mu='zero' with a centring op is a literal no-op: the operator "
+                    "cqig mu='zero' with a centring op is a literal no-op: the message operator "
                     "subtracts c*mu and mu is 0, so the model is the ungated reasoner. "
                     "Ablate mu against op='gate', which is the arm whose result is in doubt.")
             if self.cqig.centring:
@@ -416,32 +372,32 @@ class FusionGraphReasoner(nn.Module):
                      "graph peakedness, channel agreement]." if n_feat > 1 else
                      "phi_q = the semantic top-5 mean alone (the pre-2026-08-16 behaviour)."))
 
-        # --- trainable operator scalars (warm-started at fitted values; base LR via op_lr_scale) ---
+        # --- trainable handcrafted scorer scalars (warm-started at fitted values; base LR via op_lr_scale) ---
         # effective value = init + op_lr_scale * delta, delta starts at 0. With Adam this makes the
-        # operator learn at op_lr_scale x the graph/gate LR (1.0 = same rate).
+        # handcrafted scorer learn at op_lr_scale x the graph/gate LR (1.0 = same rate).
         self.op_lr_scale = float(op_lr_scale)
         self.register_buffer("w_init", torch.tensor(W_INIT, dtype=torch.float32))
         self.w_delta = nn.Parameter(torch.zeros(3))
         self.beta_delta = nn.Parameter(torch.zeros(()))
 
-        # --- operator raw ingredients (CPU float16; rows moved to GPU per batch) ---
+        # --- handcrafted scorer raw ingredients (CPU float16; rows moved to GPU per batch) ---
         self._dense: dict[str, torch.Tensor] = {}
         self._S: dict[str, torch.Tensor] = {}
         self._M: dict[str, torch.Tensor] = {}
         self._totS: dict[str, torch.Tensor] = {}
         self._row: dict[str, tuple] = {}
         seen_paths: dict[str, str] = {}          # abspath -> tag already holding it
-        for split, ev in ((("train", "OPERATOR_COMPONENTS"), ("test", "OPERATOR_COMPONENTS_TEST"))
-                          if semantic == "operator" else ()):
+        for split, ev in ((("train", 'HANDCRAFTED_COMPONENTS'), ("test", 'HANDCRAFTED_COMPONENTS_TEST'))
+                          if semantic == 'handcrafted' else ()):
             # Not loaded under semantic='mlp'. dense+S+M is 660 MB of resident CPU
             # memory on CS, and nothing in that arm reads it.
-            raw = os.environ.get(ev)
+            raw = os.environ.get(ev) or os.environ.get(ev.replace("HANDCRAFTED_", "OPERATOR_"))
             if not raw:
                 continue
             paths = [x.strip() for x in raw.split(",") if x.strip()]
             for j, p in enumerate(paths):
                 # THE SAME FILE FOR BOTH VARIABLES IS THE ZERO-SHOT IDIOM. Predict runs
-                # have one corpus and set OPERATOR_COMPONENTS=OPERATOR_COMPONENTS_TEST=x,
+                # have one corpus and set HANDCRAFTED_COMPONENTS=HANDCRAFTED_COMPONENTS_TEST=x,
                 # which must stay legal: the duplicate check below exists to catch two
                 # DIFFERENT tables claiming the same query ids (a real routing bug), not
                 # one table registered twice (the same rows either way).
@@ -470,9 +426,9 @@ class FusionGraphReasoner(nn.Module):
                 print(f"[fusion] loaded {ev}[{j}] as '{tag}': dense/S/M "
                       f"{tuple(self._dense[tag].shape)} ({len(d['query_ids'])} queries) "
                       f"{os.path.basename(p)}")
-        if semantic == "operator":
-            assert self._row, ("no operator components: set OPERATOR_COMPONENTS / "
-                               "OPERATOR_COMPONENTS_TEST")
+        if semantic == 'handcrafted':
+            assert self._row, ('no handcrafted scorer components: set HANDCRAFTED_COMPONENTS / '
+                               'HANDCRAFTED_COMPONENTS_TEST')
         else:
             self._init_semantic(semantic_train)
 
@@ -480,7 +436,7 @@ class FusionGraphReasoner(nn.Module):
         self._doc_ids = None
         # [B, n_doc] detached SEMANTIC scores, cached for hard-negative mining. Named
         # _s_op for back-compatibility with the trainer and the routed reasoner, but it
-        # holds whichever channel `semantic` selected, not necessarily the operator.
+        # holds whichever channel `semantic` selected, not necessarily the handcrafted scorer.
         self._s_op = None
 
     # ------------------------------------------------------------------ precision
@@ -533,7 +489,7 @@ class FusionGraphReasoner(nn.Module):
         if getattr(self, "fusion_form", "additive") == "mixture":
             heads.append(("router", self.router))
             if isinstance(getattr(self, "tau_g_hat", None), nn.Parameter):
-                # `self` with recurse=False is tau_g_hat AND the operator scalars
+                # `self` with recurse=False is tau_g_hat AND the handcrafted scorer scalars
                 # w_delta/beta_delta. Pinning those too is deliberate: w_delta starts at
                 # 0 but drifts, and W_INIT is 1.05, so they sit on the same cliff. Only
                 # reached under form=mixture, so the additive arm is untouched.
@@ -698,7 +654,7 @@ class FusionGraphReasoner(nn.Module):
     def _z(x):
         return (x - x.mean(-1, keepdim=True)) / (x.std(-1, keepdim=True) + 1e-6)
 
-    def _operator(self, ids, n_doc, device):
+    def _handcrafted(self, ids, n_doc, device):
         """Recompute S_op live from cached ingredients with the current (trainable) w, beta."""
         order = [self._row[str(x.item() if hasattr(x, "item") else x)] for x in ids]
         tag = order[0][0]
@@ -706,18 +662,18 @@ class FusionGraphReasoner(nn.Module):
         # mixed batch means the loader changed, and index_select below would silently
         # read rows of the wrong corpus rather than fail.
         assert all(t == tag for t, _ in order), (
-            f"batch mixes operator tables {sorted({t for t, _ in order})}")
+            f"batch mixes handcrafted scorer tables {sorted({t for t, _ in order})}")
         idx = torch.tensor([r for _, r in order], dtype=torch.long)
 
         dense = self._dense[tag].index_select(0, idx).to(device, torch.float32)
         S = self._S[tag].index_select(0, idx).to(device, torch.float32)
         M = self._M[tag].index_select(0, idx).to(device, torch.float32)
         totS = self._totS[tag].to(device)                       # [n_doc]
-        assert dense.shape[1] == n_doc, f"operator cols {dense.shape[1]} != {n_doc} doc nodes (alignment)"
+        assert dense.shape[1] == n_doc, f"handcrafted scorer cols {dense.shape[1]} != {n_doc} doc nodes (alignment)"
 
         w = self.w_init + self.op_lr_scale * self.w_delta       # [3]
         beta = (BETA_INIT + self.op_lr_scale * self.beta_delta).clamp(min=0.05)
-        dem = (totS.unsqueeze(0) - S).clamp(min=1e-6)           # [B, n_doc] leave-one-out popularity
+        dem = (totS.unsqueeze(0) - S).clamp(min=1e-6)           # [B, n_doc] leave-one-out background matchability
         degb = dem.pow(beta)
         return w[0] * self._z(dense) + w[1] * self._z(S / degb) + w[2] * self._z(M / degb)
 
@@ -726,7 +682,7 @@ class FusionGraphReasoner(nn.Module):
     def _load_semantic_module():
         """Import semantic_scorer.py from the repo rather than vendoring a copy of it.
 
-        The scorer, its normalisation and its popularity object are one design. A second
+        The scorer, its normalisation and its background matchability object are one design. A second
         copy living here would drift from the one that produced the checkpoint, and that
         drift would surface as a quietly different score rather than an import error.
         """
@@ -739,7 +695,7 @@ class FusionGraphReasoner(nn.Module):
         for p in (root, f"{root}/retriever"):
             if p not in sys.path:
                 sys.path.insert(0, p)
-        spec = importlib.util.spec_from_file_location("cargo_semantic_scorer", path)
+        spec = importlib.util.spec_from_file_location("scigraphir_semantic_scorer", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
@@ -750,7 +706,7 @@ class FusionGraphReasoner(nn.Module):
         self._sem_tab, self._sem_row, self._sem_last_tag = {}, {}, None
         seen: dict[str, str] = {}
         for split, ev in (("train", "SEMANTIC_COMPONENTS"), ("test", "SEMANTIC_COMPONENTS_TEST")):
-            raw = os.environ.get(ev)
+            raw = os.environ.get(ev) or os.environ.get(ev.replace("HANDCRAFTED_", "OPERATOR_"))
             if not raw:
                 continue
             for j, p in enumerate([x.strip() for x in raw.split(",") if x.strip()]):
@@ -793,7 +749,7 @@ class FusionGraphReasoner(nn.Module):
 
         # --- the trained scorer and its predictor, as ONE warm start ---
         # Loading the scorer from a joint run without its predictor would pair a trained
-        # readout with an untrained popularity, which is a model that never existed.
+        # readout with an untrained background matchability, which is a model that never existed.
         ck, pn = os.environ.get("SEMANTIC_CKPT", ""), os.environ.get("SEMANTIC_POPNET", "")
         assert ck and os.path.exists(ck), (
             "semantic='mlp' needs SEMANTIC_CKPT: a params_semantic_mlp_*.json from section 5d")
@@ -911,7 +867,7 @@ class FusionGraphReasoner(nn.Module):
         self.cqig.mode = "gate"
 
     def semantic_aux_loss(self):
-        """Log-space anchor holding p_hat near measured popularity. Mirrors Pop.aux_loss.
+        """Log-space anchor holding p_hat near measured background matchability. Mirrors Pop.aux_loss.
 
         Without it the fusion's ranking gradient is free to repurpose the predictor as extra
         scorer capacity, exactly as it would in the standalone run. Uses the tag of the last
@@ -937,8 +893,8 @@ class FusionGraphReasoner(nn.Module):
         # THE ONLY LINE THAT DIFFERS BETWEEN THE TWO ARMS. Everything below -- gate,
         # relu floor, fusion arithmetic, hard-negative mining -- is shared, so a run
         # pair isolates the semantic scorer with the graph half held fixed.
-        s_op = (self._operator(batch["id"], doc.numel(), g.device)
-                if self.semantic == "operator"
+        s_op = (self._handcrafted(batch["id"], doc.numel(), g.device)
+                if self.semantic == 'handcrafted'
                 else self._semantic(batch["id"], doc.numel(), g.device))
         # IS A HIGH INFORMATIVENESS ACTUALLY ON THE GOLD PAPERS? Measurement only, and only
         # while the trainer has recording switched on (around evaluate()). Nothing here
@@ -952,7 +908,7 @@ class FusionGraphReasoner(nn.Module):
         # the semantic scorer could add a constant or scale everything up and change
         # gamma_q while leaving z(s_op) and its own ranking untouched, so the gate would
         # be keyed to a quantity with no semantic content. That is live for the learned
-        # arm in particular: an MLP's output scale is free, unlike the operator's
+        # arm in particular: an MLP's output scale is free, unlike the handcrafted scorer's
         # warm-started w. After z(), a peaked top-5 genuinely means a confident scorer.
         sz = self._z(s_op).float()
         cov = sz.topk(min(5, sz.shape[1]), dim=-1).values.mean(-1, keepdim=True)

@@ -3,16 +3,16 @@ build_sir4_openie_notebook.py -- the "+ Graph Reasoner (OpenIE graph)" row of th
 in-field table, for all four fields.
 
 THE ROW. The cumulative ablation in the SIR-4 table goes: multi-view scorer -> + graph
-reasoner (frame graph) -> + CCMP. This notebook adds the construction control between the
+reasoner (SciAfford graph) -> + CCMP. This notebook adds the construction control between the
 first two: the SAME multi-view scorer fused with the SAME graph reasoner, trained the same
-way, on the OpenIE entity graph instead of the frame graph. CCMP is off, so the row sits at
-the "+ Graph Reasoner" rung and the only thing that differs from the frame-graph row is the
+way, on the OpenIE entity graph instead of the SciAfford graph. CCMP is off, so the row sits at
+the "+ Graph Reasoner" rung and the only thing that differs from the SciAfford graph row is the
 graph. Four in-field runs: train on sir4_<field>_train (OpenIE), evaluate on
 sir4_<field>_test (OpenIE), same-field and cross-field slices, nDCG@5.
 
 THE GRAPHS EXIST. retriever/data/sir4_<field>_{train,test}/processed/stage1 holds an
 entity + document graph per field (built 18 Aug, inside every bundle on Drive). GFM-RAG
-trained on them in August; SciGraphIR never has. They are smaller than the frame graphs
+trained on them in August; SciGraphIR never has. They are smaller than the affordance representation graphs
 (CS train 205k nodes vs 243k), so nothing here needs more memory than the runs that fit.
 
 SEEDS. Every query seeds on the OpenIE graphs except four in CS (3 train, 1 test). The
@@ -41,14 +41,14 @@ sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 from stage_sir4 import DOMAINS as _DOMAINS  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
-SETS_MAP = {d: f"benchmark/data/benchmark/{_DOMAINS[d][1]}/sets.json" for d in sorted(_DOMAINS)}
+SETS_MAP = {d: f"sir-4/data/benchmark/{_DOMAINS[d][1]}/sets.json" for d in sorted(_DOMAINS)}
 
 HEADER = '''# SIR-4 — "+ Graph Reasoner (OpenIE graph)": the construction control, four fields
 
 The SIR-4 cumulative ablation goes *multi-view scorer* → *+ graph reasoner* → *+ CCMP*, all
-on the frame graph. This notebook adds one row: the **same scorer and the same graph
+on the SciAfford graph. This notebook adds one row: the **same scorer and the same graph
 reasoner, trained the same way, on the OpenIE entity graph** instead. CCMP is off, so the
 row sits at the "+ Graph Reasoner" rung and the only difference from that row is the graph.
 
@@ -110,7 +110,7 @@ for d in FIELDS:
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -133,7 +133,7 @@ for d in FIELDS:
     cp.set_dataset(DS_OF[d])
     for s in ("train", "test"):
         s1 = f"{DATA_ROOT}/{g_of(d, s)}/processed/stage1"
-        for p in (f"{s1}/nodes.csv", f"{s1}/edges.csv", f"{s1}/{s}.json", cp.probes_path(s),
+        for p in (f"{s1}/nodes.csv", f"{s1}/edges.csv", f"{s1}/{s}.json", cp.answers_path(s),
                   f"{DATA_ROOT}/{DS_OF[d]}_{s}/raw/documents.json"):
             assert os.path.exists(p), f"missing {p}"
         types = collections.Counter(r["type"] for r in csv.DictReader(open(f"{s1}/nodes.csv")))
@@ -154,7 +154,7 @@ STD_COLS = "mrr,ndcg@5,recall@3,recall@5,recall@10,recall@100,completeset@5"   #
 '''
 
 HELPERS = '''# 4a. Helpers: cache restore/save (graph-keyed, so the OpenIE graphs never collide with the
-# frame graphs' artefacts), and the per-field preparation.
+# affordance representation graphs' artefacts), and the per-field preparation.
 import numpy as np
 
 def restore_index(g, cache):
@@ -180,22 +180,22 @@ def opc(d, s):  return f"{DATA_ROOT}/{g_of(d, s)}/operator_components{OP_SLUG}.n
 def semc(d, s): return f"{DATA_ROOT}/{g_of(d, s)}/semantic_components{OP_SLUG}.npz"
 
 def prep_field(d):
-    """Embeddings, index, operator + scorer components for BOTH OpenIE graphs of one field,
-    and the field's own multi-view scorer warm start (the same 5d recipe as the frame-graph
+    """Embeddings, index, handcrafted scorer + scorer components for BOTH OpenIE graphs of one field,
+    and the field's own multi-view scorer warm start (the same 5d recipe as the SciAfford graph
     run of that field). Returns the environment for run/predict."""
     ds = DS_OF[d]
     ex = {"SCIGRAPHIR_DATASET": ds}
     if os.path.isdir(f"{S4_CACHE[d]}/op_emb"):
         shutil.copytree(f"{S4_CACHE[d]}/op_emb", f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", dirs_exist_ok=True)
-        print(f"  {d}: embedding caches restored (documents/queries/answers are the same text as the frame-graph run)")
+        print(f"  {d}: embedding caches restored (documents/queries/answers are the same text as the SciAfford graph run)")
     for s in ("train", "test"):
         restore_index(g_of(d, s), S4_CACHE[d])
-        # operator components: keyed by GRAPH name, so the OpenIE ones get their own file.
+        # handcrafted scorer components: keyed by GRAPH name, so the OpenIE ones get their own file.
         c = f"{S4_CACHE[d]}/{g_of(d, s)}_operator_components{OP_SLUG}.npz"
         if not os.path.exists(opc(d, s)):
             if os.path.exists(c): shutil.copy(c, opc(d, s))
             else:
-                sh(f"python3 -u precompute/precompute_operator_components.py "
+                sh(f"python3 -u precompute/precompute_handcrafted_components.py "
                    f"--dataset {ds} --graph {g_of(d, s)} --split {s} --model {OP_MODEL}", KGDIR, extra=ex)
                 os.makedirs(os.path.dirname(c), exist_ok=True); shutil.copy(opc(d, s), c)
         zz = np.load(opc(d, s), allow_pickle=True)
@@ -225,11 +225,11 @@ def prep_field(d):
         print(f"  {g_of(d, s):22} H {tuple(int(x) for x in zz['h_shape'])}  Jmax={int(zz['Jmax'])}")
     shutil.copytree(f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb", f"{S4_CACHE[d]}/op_emb", dirs_exist_ok=True)
     # THE "+ GRAPH REASONER" ENVIRONMENT: the run_model(semantic="mlp") defaults of the CCMP
-    # notebook -- additive gate, operator-hard-negative objective, PER_GOLD=1, HARDNEG_GRAPH=50,
+    # notebook -- additive gate, handcrafted scorer-hard-negative objective, PER_GOLD=1, HARDNEG_GRAPH=50,
     # and NO CCMP variable at all, so the head is never built.
     return dict(WANDB_MODE="disabled", HYDRA_FULL_ERROR="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
                 SCIGRAPHIR_DATASET=ds,
-                OPERATOR_COMPONENTS=opc(d, "train"), OPERATOR_COMPONENTS_TEST=opc(d, "test"),
+                HANDCRAFTED_COMPONENTS=opc(d, "train"), HANDCRAFTED_COMPONENTS_TEST=opc(d, "test"),
                 SEMANTIC_COMPONENTS=semc(d, "train"), SEMANTIC_COMPONENTS_TEST=semc(d, "test"),
                 SEMANTIC_CKPT=sem_ckpt, SEMANTIC_POPNET=sem_pop, SEM_POP_LAMBDA="1.0",
                 FUSION_OBJECTIVE="hardneg", HARDNEG_HUB="50", HARDNEG_RAND="50", AUX_W="1.0",
@@ -240,7 +240,7 @@ print("helpers ready")
 
 TRAIN_LOOP = '''# 5. Field-serial: prepare, train in-field on the OpenIE graph, predict on the OpenIE test
 # graph. Predictions come out of the training run itself (do_predict on valid_names, exactly
-# as the frame-graph rows were produced), so there is no separate predict pass.
+# as the SciAfford graph rows were produced), so there is no separate predict pass.
 for k in list(os.environ):
     if k.startswith(("CCMP", "STRAT_", "CQIG", "RESID_", "MISS_W")): os.environ.pop(k)   # nothing leaks between fields
 
@@ -320,7 +320,7 @@ for d, pred in RUN.items():
 TABLE = '''# 6. The row, in the SIR-4 table's layout: nDCG@5 (and R@5 underneath), same-field and
 # cross-field per field, macro gap = (mean cross - mean same) / mean same over the fields.
 # Baseline rows are read from the all-domain baselines notebook's score files on Drive; the
-# frame-graph SciGraphIR rows are the thesis numbers and are not recomputed here.
+# SciAfford graph SciGraphIR rows are the thesis numbers and are not recomputed here.
 BASE = [("BM25", "scores_BM25.json"), ("BGE-large", "scores_BGE-large.json"),
         ("Qwen3-Embedding", "scores_Qwen3-Embedding.json"), ("SPECTER2", "scores_SPECTER2-base.json"),
         ("SciNCL", "scores_SciNCL.json"), ("ReasonIR-8B", "scores_ReasonIR-8B.json"),
@@ -382,7 +382,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values())
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -394,7 +394,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values())
     cfg_cell = dict(src[9]); cfg_src = "".join(cfg_cell["source"])
     guard = '    assert "sir4" not in t, f"a sir4 dataset reference survived in {cfg}"\n'

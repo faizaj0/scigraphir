@@ -5,7 +5,7 @@ adaptation on the cross-field queries of Computer Science and Materials Science,
 all six baselines.
 
 WHY A NEW RUN. The SciGraphIR row printed in Table 9.3 came from the joint
-Physics+Biology run of 9 Aug (build_joint_notebook.py), which is the operator fusion:
+Physics+Biology run of 9 Aug (build_joint_notebook.py), which is the handcrafted scorer fusion:
 no multi-view scorer, no CCMP. Table 9.1's SciGraphIR is the updated model, so the two
 tables currently describe different systems under one name. This notebook trains the
 updated model under Table 9.3's protocol. The baseline rows are the SAME six arm
@@ -39,9 +39,9 @@ sys.path.insert(0, HERE)
 import build_rb_zeroshot_notebook as rb  # noqa: E402
 from stage_sir4 import DOMAINS as _DOMAINS  # noqa: E402
 
-ROOT, CARGO, FORK = rb.ROOT, rb.CARGO, rb.FORK
+ROOT, REPO_ROOT, FORK = rb.ROOT, rb.REPO_ROOT, rb.FORK
 md, code = rb.md, rb.code
-SETS_MAP = {d: f"benchmark/data/benchmark/{_DOMAINS[d][1]}/sets.json" for d in sorted(_DOMAINS)}
+SETS_MAP = {d: f"sir-4/data/benchmark/{_DOMAINS[d][1]}/sets.json" for d in sorted(_DOMAINS)}
 
 HEADER = '''# SIR-4 — zero-shot transfer across fields (Table 9.3, updated model)
 
@@ -62,7 +62,7 @@ with the same scorer.
 | 8 | Table 9.3 | seconds |
 
 The SciGraphIR row printed in the thesis came from the 9 Aug joint run, which is the
-operator fusion without the multi-view scorer or CCMP. This notebook replaces that row with
+handcrafted scorer fusion without the multi-view scorer or CCMP. This notebook replaces that row with
 the updated model; the baseline rows are unchanged.
 '''
 
@@ -106,7 +106,7 @@ for d in S4_DOMS:
 if os.path.isdir(PARK):
     os.makedirs(os.path.dirname(KEEP), exist_ok=True); shutil.move(PARK, KEEP); print("restored caches")
 
-OVERLAY = json.loads(r\'\'\'__OVERLAY__\'\'\')
+OVERLAY = json.loads(r\'''__OVERLAY__\''')
 def apply_overlay():
     ov = f"{DRIVE}/code_overlay"
     if os.path.isdir(ov):
@@ -125,12 +125,12 @@ SETS    = {d: f"{SCIGRAPHIR_ROOT}/{rel}" for d, rel in __SETS_MAP__.items()}
 for d in S4_DOMS:
     cp.set_dataset(f"sir4_{d}")
     for label, p in (("corpus", f"{DATA_ROOT}/sir4_{d}_test/raw/documents.json"), ("queries", QUERIES[d]),
-                     ("probes", cp.probes_path("test")), ("graph", f"{DATA_ROOT}/{g_of(d, 'test')}/processed/stage1/nodes.csv"),
+                     ("probes", cp.answers_path("test")), ("graph", f"{DATA_ROOT}/{g_of(d, 'test')}/processed/stage1/nodes.csv"),
                      ("sets", SETS[d])):
         assert os.path.exists(p), f"missing {d} {label}: {p}"
     if d in TRAIN_DOMS:
         for label, p in (("train corpus", f"{DATA_ROOT}/sir4_{d}_train/raw/documents.json"),
-                         ("train probes", cp.probes_path("train")),
+                         ("train hypothetical answers", cp.answers_path("train")),
                          ("train graph", f"{DATA_ROOT}/{g_of(d, 'train')}/processed/stage1/nodes.csv")):
             assert os.path.exists(p), f"missing {d} {label}: {p}"
     print(f"  ok  sir4_{d:8} {'train+test' if d in TRAIN_DOMS else 'test only (held out)'}")
@@ -312,7 +312,7 @@ for d in EVAL_DOMS:
     if os.path.exists(pred_drive):
         print(f"[cached] {d}: {os.path.relpath(pred_drive, DRIVE)}"); ZS_PRED[d] = pred_drive; continue
     os.makedirs(run_local, exist_ok=True)
-    extra = dict(S4_ENV, OPERATOR_COMPONENTS=opc(d, "test"), OPERATOR_COMPONENTS_TEST=opc(d, "test"),
+    extra = dict(S4_ENV, HANDCRAFTED_COMPONENTS=opc(d, "test"), HANDCRAFTED_COMPONENTS_TEST=opc(d, "test"),
                  SEMANTIC_COMPONENTS=semc(d, "test"), SEMANTIC_COMPONENTS_TEST=semc(d, "test"),
                  CCMP_HID=str(info["ccmp_hid"]))
     for k in ("CCMP_LR", "CCMP_M", "CCMP_NEG", "CCMP_W", "CCMP_POOL", "CCMP_M_POS", "CCMP_M_NEG"):
@@ -405,7 +405,7 @@ def main() -> int:
     fusion_files = {f"/content/gfm-rag/{rel}": open(f"{FORK}/{rel}").read() for rel in rb.FUSION_REL}
     assert not any("'''" in v for v in fusion_files.values()), "fusion source contains '''"
     files_cell = code(
-        f"# === write the CARGO-fusion files into the fork (generated from the repo copies {built}) ===\n"
+        f"# === write the SciGraphIR-fusion files into the fork (generated from the repo copies {built}) ===\n"
         "import json, os\n"
         f"FILES = json.loads(r'''{json.dumps(fusion_files)}''')\n"
         "for p, c in FILES.items():\n"
@@ -417,7 +417,7 @@ def main() -> int:
         "for m in ['gfmrag.models.fusion_reasoner', 'gfmrag.trainers.fusion_trainer']:\n"
         "    importlib.import_module(m); print('import OK:', m)\n"
         "print('fusion files ready')\n")
-    overlay = {rel: open(f"{CARGO}/{rel}").read() for rel in rb.OVERLAY_REL}
+    overlay = {rel: open(f"{REPO_ROOT}/{rel}").read() for rel in rb.OVERLAY_REL}
     assert not any("'''" in v for v in overlay.values()), "an overlay script contains '''"
 
     # The cloned config-rewrite cell asserts no "sir4" name survives; that guard is for TOMATO

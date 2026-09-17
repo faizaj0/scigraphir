@@ -5,26 +5,26 @@ showcase2_figs.py -- figures for hand-picked path interpretations (the "showcase
 Reads hops_pick_<arm>.json written by interpret_paths for a PICK of (query, gold) pairs and draws, per dataset:
 
   <out>_ladder.{png,pdf}    one row per pair: the gold's rank at every stage of the cumulative ablation
-                            (Qwen3 cosine -> multi-view scorer -> +OpenIE graph -> +SciAffordGraph, gate off ->
+                            (Qwen3 cosine -> multi-view scorer -> +OpenIE graph -> +SciAfford graph, gate off ->
                             +CCMP), log scale, with the graph channel alone (gate off / on) as hollow markers and
                             any dense/lexical baselines as grey ticks. The "difference with the graph branch" figure.
-  <out>_routes_<n>.{png,pdf} one panel per pair (4 per page): the top interpreted route under the frame graph with
-                            CCMP, boxes typed by frame kind, the relation on every hop and the CCMP gate coloured
+  <out>_routes_<n>.{png,pdf} one panel per pair (4 per page): the top interpreted route under the SciAfford graph with
+                            CCMP, boxes typed by affordance representation kind, the relation on every hop and the CCMP gate coloured
                             (orange > 1.05, blue < 0.95), the weight with CCMP and with the gate off, and the
                             OpenIE graph's top route (or "no route") underneath for contrast.
   <out>.md                  the readable dump (query, gold, field label, ranks per arm, seeds, views, every path).
 
 usage:
   showcase2_figs.py --dataset sir4_cs --dir <folder with hops_pick_*.json> --pick golds_pick.json \\
-      --queries raw/test.json --docs raw/documents.json [--quartet eval.json] [--pred qwen3=...] --out <prefix>
+      --queries raw/test.json --docs raw/documents.json [--sir4 eval.json] [--pred qwen3=...] --out <prefix>
 """
 from __future__ import annotations
 import argparse, json, os, textwrap
 
 BIG = 10 ** 6
 OPENIE_FUSED = False     # the OpenIE model's fused rank is its own scorer's rank when its graph has no route; off by default
-ARMS = [("frame_ccmp", "SciAffordGraph + CCMP"), ("frame_ccmp_off", "SciAffordGraph, gate off"),
-        ("frame_nocc", "SciAffordGraph, no CCMP (own run)"), ("openie", "OpenIE graph")]
+ARMS = [("frame_ccmp", "SciAfford graph + CCMP"), ("frame_ccmp_off", "SciAfford graph, gate off"),
+        ("frame_nocc", "SciAfford graph, no CCMP (own run)"), ("openie", "OpenIE graph")]
 SYS = {"bm25": "BM25", "bge": "BGE-large", "qwen3": "Qwen3-Emb.", "reasonir": "ReasonIR-8B", "specter2": "SPECTER2", "scincl": "SciNCL"}
 FILL = {"function": "#d6f0e0", "limitation": "#fce8c8", "method": "#e4dcf6", "task": "#fce8c8", "finding": "#faf3cd",
         "mechanism": "#e4dcf6", "domain": "#ececee", "paper": "#d6e4f7", "entity": "#f3f3f3", "gold": "#c9dcf5"}
@@ -69,7 +69,7 @@ def draw_ladder(rows, out, title):
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     n = len(rows); fig, ax = plt.subplots(figsize=(11, 0.62 * n + 1.8))
     stages = [("dense", "Qwen3 cosine", "o", "#7f7f7f"), ("scorer", "multi-view scorer", "s", "#9467bd"),
-              ("off_fused", "+ SciAffordGraph (gate off)", "^", "#2ca02c"), ("fused", "+ CCMP (SciGraphIR)", "*", "#1f77b4")]
+              ("off_fused", "+ SciAfford graph (gate off)", "^", "#2ca02c"), ("fused", "+ CCMP (SciGraphIR)", "*", "#1f77b4")]
     if OPENIE_FUSED: stages.insert(2, ("openie_fused", "OpenIE model (own scorer + entity graph)", "D", "#ff7f0e"))
     for i, r in enumerate(rows):
         y = n - 1 - i
@@ -78,7 +78,7 @@ def draw_ladder(rows, out, title):
         if len(pts) > 1: ax.plot([x for x, _ in pts], [y] * len(pts), color="#bbbbbb", lw=1, zorder=1)
         for x, (k, lab, mk, col) in zip(xs, stages):
             if x: ax.scatter([x], [y], marker=mk, s=90 if mk == "*" else 46, color=col, zorder=3, label=lab if i == 0 else None)
-        for k, lab, mk, col in (("off_graph", "SciAffordGraph channel alone, gate off", "^", "#2ca02c"), ("graph", "SciAffordGraph channel alone, with CCMP", "*", "#1f77b4"),
+        for k, lab, mk, col in (("off_graph", "SciAfford graph channel alone, gate off", "^", "#2ca02c"), ("graph", "SciAfford graph channel alone, with CCMP", "*", "#1f77b4"),
                                 ("openie_graph", "OpenIE entity-graph channel alone", "D", "#ff7f0e")):
             if r.get(k): ax.scatter([r[k]], [y], marker=mk, s=90 if mk == "*" else 46, facecolors="none", edgecolors=col, linewidths=1.4, zorder=2, label=lab if i == 0 else None)
         for b, v in (r.get("base") or {}).items():
@@ -88,7 +88,7 @@ def draw_ladder(rows, out, title):
     ax.axvline(10, color="#dddddd", lw=1, ls="--"); ax.text(10, -0.75, "top-10", fontsize=7.5, color="#888888", ha="center", va="top")
     ax.grid(True, axis="x", ls=":", alpha=0.5); ax.set_title(title, fontsize=10.5)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16 - 0.9 / max(n, 4)), ncol=3, fontsize=8, frameon=False)
-    ax.text(0.0, -0.10 - 0.9 / max(n, 4), "filled = the cumulative ablation (one scorer, add the frame graph, add CCMP); hollow = each graph's channel on its own", transform=ax.transAxes, fontsize=7.5, color="#555555", va="top")
+    ax.text(0.0, -0.10 - 0.9 / max(n, 4), "filled = the cumulative ablation (one scorer, add the SciAfford graph, add CCMP); hollow = each graph's channel on its own", transform=ax.transAxes, fontsize=7.5, color="#555555", va="top")
     fig.tight_layout()
     for ext in ("png", "pdf"): fig.savefig(f"{out}_ladder.{ext}", dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -104,7 +104,7 @@ def draw_routes(rows, out, docs, per_page=4):
             ax.axis("off"); ax.set_xlim(0, 100); ax.set_ylim(0, 12)
             ax.text(0, 11.75, r["label"].replace("\n", "   |   "), fontsize=10, weight="bold", va="top")
             ax.text(0, 10.75, "query: " + short(r["question"], 200), fontsize=8, va="top", color="#333333")
-            ax.text(0, 9.95, f"rank: cosine {r.get('dense')}  |  scorer {r.get('scorer')}  |  +OpenIE graph {r.get('openie_fused')}  |  +SciAffordGraph, gate off {r.get('off_fused')}  |  +CCMP {r.get('fused')}      graph channel alone: {r.get('off_graph')} (gate off)  ->  {r.get('graph')} (with CCMP)",
+            ax.text(0, 9.95, f"rank: cosine {r.get('dense')}  |  scorer {r.get('scorer')}  |  +OpenIE graph {r.get('openie_fused')}  |  +SciAfford graph, gate off {r.get('off_fused')}  |  +CCMP {r.get('fused')}      graph channel alone: {r.get('off_graph')} (gate off)  ->  {r.get('graph')} (with CCMP)",
                     fontsize=8, va="top", color="#333333")
             def chain(p, yc, ylab, seeds, grey=False, tag=""):
                 if not p:
@@ -113,7 +113,7 @@ def draw_routes(rows, out, docs, per_page=4):
                 hops = p["hops"]; nb = len(hops) + 1; gap = 0.9; w = min(13.5, (98.5 - gap * (nb - 1)) / nb); x0 = 0.5
                 names = [h["head"] for h in hops] + [hops[-1]["tail"]]
                 lab = tag + f"w = {p['weight']:.2f}" + (f"  ({r['off_w']:.2f} with the gate off)" if r.get("off_w") is not None and not grey else "")
-                if art: lab += "   [first hop is not a seed frame: placeholder artefact, not a route]"
+                if art: lab += '   [first hop is not a seed node: placeholder artefact, not a route]'
                 ax.text(0, ylab, lab, fontsize=7.8, va="top", color="#888888" if grey else "#111111")
                 for j, nm in enumerate(names):
                     t = ntype(nm, docs); gold = (j == nb - 1); x = x0 + j * (w + gap)
@@ -127,9 +127,9 @@ def draw_routes(rows, out, docs, per_page=4):
                         ax.annotate("", xy=(x + w + gap, yc), xytext=(x + w, yc), arrowprops=dict(arrowstyle="-|>", lw=1.1, color="#999999" if grey else "#333333"))
                         ax.text(xm, yc + 1.25, short(h["rel"].replace("inverse_", "inv. ").replace("_", " "), 20), fontsize=6.2, ha="center", va="bottom", style="italic", color="#666666" if grey else "#222222")
                         if g is not None and not grey: ax.text(xm, yc - 1.25, f"gate {g:.2f}", fontsize=6.2, ha="center", va="top", color=col, weight="bold" if abs(g - 1) > 0.05 else "normal")
-            chain(r.get("path"), 6.6, 9.0, set(r.get("seeds", [])), tag="SciAffordGraph + CCMP, top route:   ")
+            chain(r.get("path"), 6.6, 9.0, set(r.get("seeds", [])), tag="SciAfford graph + CCMP, top route:   ")
             chain(r.get("openie_path"), 2.0, 4.35, set(r.get("openie_seeds", [])), grey=True, tag="OpenIE graph, top route:   ")
-        fig.suptitle("Path interpretations (page %d/%d): boxes are typed frames, arrows carry the relation, the CCMP gate on the sender is orange when > 1.05 and blue when < 0.95" % (pg, len(pages)), fontsize=9.5, y=0.998)
+        fig.suptitle('Path interpretations (page %d/%d): boxes are typed affordance nodes, arrows carry the relation, the CCMP gate on the sender is orange when > 1.05 and blue when < 0.95' % (pg, len(pages)), fontsize=9.5, y=0.998)
         fig.tight_layout(rect=(0, 0, 1, 0.99))
         for ext in ("png", "pdf"): fig.savefig(f"{out}_routes_{pg}.{ext}", dpi=170, bbox_inches="tight")
         plt.close(fig)
@@ -139,7 +139,7 @@ def draw_routes(rows, out, docs, per_page=4):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True); ap.add_argument("--dir", required=True); ap.add_argument("--pick", default=None)
-    ap.add_argument("--queries", required=True); ap.add_argument("--docs", required=True); ap.add_argument("--quartet", default=None)
+    ap.add_argument("--queries", required=True); ap.add_argument("--docs", required=True); ap.add_argument("--sir4", "--quartet", dest='sir4', default=None)
     ap.add_argument("--pred", action="append", default=[]); ap.add_argument("--out", required=True); ap.add_argument("--prefix", default="hops_pick_")
     ap.add_argument("--candidates", default=None, help="showcase_<dataset>_candidates.json: baseline ranks per gold (instead of --pred files)")
     ap.add_argument("--openie-fused", action="store_true", help="also plot the OpenIE model's fused rank (a different trained model, its own scorer)")
@@ -149,8 +149,8 @@ def main():
     arms = {k: load_arm(f"{a.dir}/{a.prefix}{k}.json") for k, _ in ARMS if os.path.exists(f"{a.dir}/{a.prefix}{k}.json")}
     assert "frame_ccmp" in arms, f"{a.dir}/{a.prefix}frame_ccmp.json is missing"
     qf = {}
-    if a.quartet and os.path.exists(a.quartet):
-        for x in json.load(open(a.quartet)):
+    if a.sir4 and os.path.exists(a.sir4):
+        for x in json.load(open(a.sir4)):
             for d, m in (x.get("quartet", {}).get("per_document") or {}).items(): qf[(x["id"], d)] = m
     cand_base = {}
     if a.candidates and os.path.exists(a.candidates):
@@ -183,10 +183,10 @@ def main():
                "openie_graph": oi["rank"].get("graph") if oi else None, "path": p, "off_w": off_w, "seeds": on["seeds"], "base": base,
                "openie_path": (oi["paths"][0] if oi and oi["paths"] else None), "openie_seeds": oi["seeds"] if oi else []}
         rows.append(row)
-        md += [f"## {docs.get(g, g).split('. ')[0][:100]}", f"query {q} -> gold {g} | QUARTET {fp} / {st} | shortest route {on.get('min_hops')} hops", "",
+        md += [f"## {docs.get(g, g).split('. ')[0][:100]}", f"query {q} -> gold {g} | SIR-4 {fp} / {st} | shortest route {on.get('min_hops')} hops", "",
                f"**Query:** {row['question']}", "", f"**Gold:** {short(docs.get(g, g), 600)}", "",
                f"**Ranks:** cosine {row['dense']}, scorer {row['scorer']}, +OpenIE {row['openie_fused']} (graph {row['openie_graph']}), "
-               f"+SciAffordGraph gate off {row['off_fused']} (graph {row['off_graph']}), +CCMP {row['fused']} (graph {row['graph']})"
+               f"+SciAfford graph gate off {row['off_fused']} (graph {row['off_graph']}), +CCMP {row['fused']} (graph {row['graph']})"
                + ("; baselines " + ", ".join(f"{SYS.get(k, k)} {v if v < BIG else '>300'}" for k, v in base.items() if v) if base else ""), "",
                "**Seeds:** " + "; ".join(on["seeds"]), ""]
         for v in on["views"]: md.append(f"- view {v['view']} match {v['match']:.3f}: {v.get('text')}")

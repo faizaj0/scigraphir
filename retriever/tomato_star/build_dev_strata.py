@@ -10,7 +10,7 @@ Inputs (already on disk, both train-split-covered):
   domains/inspiration_domains.jsonl   ((found_doi/title) -> openalex_domain)
   outputs/caches/dev_bundle_big.json  (the carved dev queries, in order)
 
-Run:  cd CARGO && python -m cargo.build_dev_strata
+Run:  python -m retriever.tomato_star.build_dev_strata
 Out:  outputs/caches/dev_strata.json   {dev_query_index: "cross"|"same"}  (upload to Drive next to the bundles)
 """
 from __future__ import annotations

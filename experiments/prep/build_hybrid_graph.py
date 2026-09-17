@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
-build_hybrid_graph.py -- the merged graph: SciAffordGraph + the query's entity seeds + entity->paper
-mention edges (from the OpenIE graph) + paper->frame mechanism shortcuts.
+build_hybrid_graph.py -- build the default SciAfford graph: affordance structure,
+OpenIE query entity seeds, entity-to-paper mention edges and paper-to-affordance links.
+The saved `_hyb` suffix identifies the default full-method graph.
 
 Writes retriever/data/<dataset>_<split>_<suffix>/{processed/stage1/{nodes,edges,relations}.csv,
 processed/stage1/<split>.json, raw/documents.json} for train and test, in the exact layout the engine
 loads. Nothing in the source graphs is touched.
 
-What is added to the frame graph (walk-prior gate in results/qualitative/walk_prior_variants.md):
+What is added to the affordance component (walk-prior gate in results/qualitative/walk_prior_variants.md):
   entities   OpenIE entity nodes that are a SEED of at least one query of that split (start_nodes.entity)
              and have OpenIE degree <= --cap. Non-seed entities never receive mass, so they are left out
              (--all-entities keeps every entity under the cap; ~3x more nodes).
   mentions   entity --mentioned_in--> paper, copied from the OpenIE graph for the kept entities.
-  shortcuts  paper --paper_<rel>--> frame for the function / limitation / mechanism frames the paper owns
+  shortcuts  paper --paper_<rel>--> affordance representation for the function / limitation / mechanism affordance representations the paper owns
              through its methods (achieves, overcomes, limited_by, works_via), its tasks (limited_by) and
              its findings (concerns, explains). New relation names, so their embeddings are their own.
   seeds      each query's start_nodes.entity becomes the kept OpenIE entity seeds (plus whatever the
-             frame file already listed, which the loader ignores when the node is absent).
+             affordance representation file already listed, which the loader ignores when the node is absent).
 
     python3 prep/build_hybrid_graph.py --dataset tomato [--suffix hyb] [--cap 30] [--all-entities]
 """
@@ -64,8 +65,8 @@ def build_split(ds, split, suffix, cap, all_entities):
     touched = {a for a, _, _ in mentions}
     keep &= touched                                   # an entity with no paper edge is a dead node
 
-    # --- shortcuts: paper -> frame the paper owns two hops away
-    owns = collections.defaultdict(set)               # method/task/finding -> [(rel, frame)]
+    # --- shortcuts: paper -> affordance representation the paper owns two hops away
+    owns = collections.defaultdict(set)               # method/task/finding -> [(rel, affordance representation)]
     for a, rel, b, *_ in fedges:
         if rel in ("achieves", "overcomes", "limited_by", "works_via", "concerns", "explains"):
             owns[a].add((rel, b))
@@ -95,7 +96,7 @@ def build_split(ds, split, suffix, cap, all_entities):
     n_seed = 0
     for q in fqs:
         ents = [n for n in oqs.get(q["id"], {}).get("start_nodes", {}).get("entity", []) if n in keep]
-        old = [n for n in q["start_nodes"].get("entity", []) if n in ftype]     # frame-graph entity seeds that exist
+        old = [n for n in q["start_nodes"].get("entity", []) if n in ftype]     # SciAfford graph entity seeds that exist
         q["start_nodes"]["entity"] = sorted(set(old) | set(ents)); n_seed += len(q["start_nodes"]["entity"])
     json.dump(fqs, open(f"{out1}/{split}.json", "w"))
     _docs = f"{fdir}/raw/documents.json"

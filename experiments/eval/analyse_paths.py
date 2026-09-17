@@ -14,7 +14,7 @@ Reads interpret_paths.py outputs (one per arm) and produces:
       the gold vs hops of paths to the top-ranked wrong document.
 
 usage:
-  analyse_paths.py --arm "SciAffordGraph + CCMP=hops_frame_on.json" --arm "SciAffordGraph, no CCMP=hops_frame_off.json" \\
+  analyse_paths.py --arm "SciAfford graph + CCMP=hops_frame_on.json" --arm "SciAfford graph, no CCMP=hops_frame_off.json" \\
                    --arm "OpenIE graph=hops_openie.json" --docs documents.json --out fig_paths_cs
 Decoded paths that do not start at a seed or do not chain are artefacts and are skipped.
 """
@@ -75,10 +75,10 @@ def route_class(row):
         return "via function/limitation"
     if "paper" in ty:
         return "via bridge paper"
-    return "via method/task frames"
+    return 'via method/task affordance representations'
 
 
-ROUTE_ORDER = ["direct typed link", "via function/limitation", "via method/task frames", "via bridge paper", "via domain hub",
+ROUTE_ORDER = ["direct typed link", "via function/limitation", 'via method/task affordance representations', "via bridge paper", "via domain hub",
                "direct entity mention", "co-mention chain", "no valid path"]
 BUCKETS = [("graph rank $\\leq$5", lambda r: r <= 5), ("6 to 50", lambda r: 5 < r <= 50), ("$>$50", lambda r: r > 50)]
 
@@ -106,10 +106,10 @@ def main():
     have_dist = any(dist for _, _, dist in arms)
     ncol = 3 + int(have_nec) + int(have_dist)
     fig, axes = plt.subplots(2, ncol, figsize=(4.1 * ncol, 6.6))
-    palette = {"direct typed link": "#2ca02c", "via function/limitation": "#98df8a", "via method/task frames": "#1f77b4",
+    palette = {"direct typed link": "#2ca02c", "via function/limitation": "#98df8a", 'via method/task affordance representations': "#1f77b4",
                "via bridge paper": "#aec7e8", "via domain hub": "#d62728", "direct entity mention": "#ffbb78", "co-mention chain": "#ff7f0e", "no valid path": "#bbbbbb"}
 
-    # ---- (A) route composition by outcome, first arm (frame graph, CCMP on) and last arm (OpenIE)
+    # ---- (A) route composition by outcome, first arm (SciAfford graph, CCMP on) and last arm (OpenIE)
     md.append("## A. Route composition of the top path, by graph-channel outcome\n")
     for si, s in enumerate(strata):
         ax = axes[si, 0]

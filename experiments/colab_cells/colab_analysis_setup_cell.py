@@ -87,7 +87,7 @@ def set_dataset(dataset_name):
 
 
 def prepare_components(graph_names):
-    """Restore/build graph-aligned operator and semantic tables."""
+    """Restore/build graph-aligned handcrafted scorer and semantic tables."""
     global EMB_LOCAL, SEMF
     started = time.time()
     EMB_LOCAL = f"{SCIGRAPHIR_ROOT}/outputs/caches/op_emb"
@@ -115,20 +115,20 @@ def prepare_components(graph_names):
 
     for graph_name in graph_names:
         restore_index(graph_name)
-        operator_file = operator_components(graph_name)
-        if not os.path.exists(operator_file):
+        scorer_file = operator_components(graph_name)
+        if not os.path.exists(scorer_file):
             cached = f"{CACHE}/{graph_name}_operator_components{OP_SLUG}.npz"
             if os.path.exists(cached):
-                shutil.copy(cached, operator_file)
+                shutil.copy(cached, scorer_file)
             else:
                 command = [
                     sys.executable, "-u",
-                    "precompute/precompute_operator_components.py",
+                    'precompute/precompute_handcrafted_components.py',
                     "--dataset", DATASET, "--graph", graph_name,
                     "--split", "test", "--model", OP_MODEL,
                 ]
                 sh(command, KGDIR)
-                shutil.copy(operator_file, cached)
+                shutil.copy(scorer_file, cached)
 
         semantic_file = semantic_components(graph_name)
         if not semantic_components_are_current(semantic_file):
@@ -173,8 +173,8 @@ def model_environment(checkpoint, graph_name, scorer_key, gate=True):
         "WANDB_MODE": "disabled",
         "HYDRA_FULL_ERROR": "1",
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-        "OPERATOR_COMPONENTS": operator_components(graph_name),
-        "OPERATOR_COMPONENTS_TEST": operator_components(graph_name),
+        'HANDCRAFTED_COMPONENTS': operator_components(graph_name),
+        'HANDCRAFTED_COMPONENTS_TEST': operator_components(graph_name),
         "SEMANTIC_COMPONENTS": semantic_components(graph_name),
         "SEMANTIC_COMPONENTS_TEST": semantic_components(graph_name),
         "SEMANTIC_CKPT": semantic_checkpoint,

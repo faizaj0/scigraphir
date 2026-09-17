@@ -24,7 +24,7 @@ import overlay_cell  # noqa: E402
 SRC_NB = {"mir": "colab_mir_all.ipynb", "tomato": "colab_routing_tomato.ipynb",
           **{f"sir4_{f}": f"colab_qualitative_{f}.ipynb" for f in ("cs", "biology", "physics", "matsci")}}
 SETUP = [("!nvidia-smi", "first"), ("# 2. Unpack", "first"), ("import os, shutil", "first"), ("import os, sys, torch", "first"),
-         ("# === write the CARGO-fusion files", "first"), ("# Cell 3a is reused VERBATIM", "first"),
+         ("# === write the SciGraphIR-fusion files", "first"), ("# Cell 3a is reused VERBATIM", "first"),
          ("# The ULTRA layers vendored", "last"), ("# THE TRAINING SUBPROCESS IS A FRESH PYTHON", "last"),
          ("STF = ", "first"), ("# Idempotent: re-running is a no-op", "first")]
 SETUP_TITLES = ["1. GPU, Drive, paths", "2. Unpack the bundle + current scripts", "2b. Qwen3-Embedding (cached on Drive)",
@@ -77,8 +77,8 @@ def build(dataset: str) -> str:
                 "Finds the examples that show cross-domain scientific reasoning and draws the figures, in the style of "
                 "GFM-RAG's path interpretations (Table 4) and hop-distribution figure (Fig. 6).\n\n"
                 "1. every gold of every test query ranked under the graph channel alone, the multi-view scorer, Qwen3 cosine "
-                "and the fused score, per arm (frame graph + CCMP, same weights with the gate off, no-CCMP control, OpenIE graph);\n"
-                "2. NBFNet-style gradient beam search from the query's seed frames to every gold of every cross-field query "
+                'and the fused score, per arm (SciAfford graph + CCMP, same weights with the gate off, no-CCMP control, OpenIE graph);\n'
+                "2. NBFNet-style gradient beam search from the query's seed nodes to every gold of every cross-field query "
                 "(plus a same-field sample), with the CCMP gate on every hop;\n"
                 "3. `eval/showcase.py`: candidates ranked for a reader (cosine buries the gold, the model recovers it through a "
                 "mechanism route), the Table-4 LaTeX, the hop figure.\n\n"
